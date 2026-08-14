@@ -97,6 +97,7 @@ func (c *Collector) Run(ctx context.Context) {
 		case <-t.C:
 			c.CollectAll(ctx)
 			_ = c.st.PurgeExpiredSessions()
+			c.fl.Reap()
 		}
 	}
 }
@@ -380,9 +381,20 @@ func (c *Collector) Browse(ctx context.Context, host, snapshot, path string) ([]
 	if hc == nil {
 		return nil, nil, fmt.Errorf("hôte inconnu : %s", host)
 	}
+	// Le contenu d'un répertoire dans un snapshot donné est IMMUABLE : un
+	// snapshot ne change jamais. On peut donc le garder longtemps sans
+	// risque d'afficher une information périmée — remonter l'arborescence
+	// ou revenir sur ses pas devient instantané.
+	key := fmt.Sprintf("%s|ls|%s|%s", host, snapshot, path)
+	if v, ok := c.cache.getLong(key, 30*time.Minute); ok {
+		return v.([]fleet.Node), hc, nil
+	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	nodes, err := c.fl.List(ctx, hc.Addr, hc.User, hc.Port, snapshot, path)
+	if err == nil {
+		c.cache.put(key, nodes)
+	}
 	return nodes, hc, err
 }
 

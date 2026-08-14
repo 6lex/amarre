@@ -13,9 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -26,7 +24,14 @@ type Client struct {
 	signer      ssh.Signer
 	hostKeys    ssh.HostKeyCallback
 	dialTimeout time.Duration
+	pool        *pool
 }
+
+// Close libère les connexions maintenues.
+func (c *Client) Close() { c.pool.Close() }
+
+// Reap ferme les connexions inutilisées. À appeler périodiquement.
+func (c *Client) Reap() { c.pool.reap() }
 
 // NewClient charge la clé de parc. knownHosts est obligatoire : accepter
 // n'importe quelle clé d'hôte exposerait chaque collecte à une interception,
@@ -45,7 +50,7 @@ func NewClient(keyPath, knownHostsPath string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{signer: signer, hostKeys: cb, dialTimeout: 15 * time.Second}, nil
+	return &Client{signer: signer, hostKeys: cb, dialTimeout: 15 * time.Second, pool: newPool()}, nil
 }
 
 // Status est ce que la console apprend d'un hôte : des métadonnées, rien de plus.
@@ -124,33 +129,30 @@ func (c *Client) Unlock(ctx context.Context, addr, user string, port int) error 
 }
 
 func (c *Client) run(ctx context.Context, addr, user string, port int, cmd string) ([]byte, error) {
-	cfg := &ssh.ClientConfig{
-		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(c.signer)},
-		HostKeyCallback: c.hostKeys,
-		Timeout:         c.dialTimeout,
-	}
-	// knownhosts attend l'adresse sous la forme « hôte:port » : c'est elle
-	// qui sert à retrouver l'entrée correspondante, et il la normalise
-	// lui-même (« hôte » pour le port 22, « [hôte]:port » sinon). Lui passer
-	// le nom seul fait échouer toute vérification de clé d'hôte.
-	hostport := net.JoinHostPort(addr, strconv.Itoa(port))
-	d := net.Dialer{Timeout: c.dialTimeout}
-	conn, err := d.DialContext(ctx, "tcp", hostport)
+	pc, err := c.pool.get(ctx, c, addr, user, port)
 	if err != nil {
-		return nil, fmt.Errorf("connexion : %w", err)
+		return nil, err
 	}
-	sc, chans, reqs, err := ssh.NewClientConn(conn, hostport, cfg)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("poignée de main SSH : %w", err)
-	}
-	client := ssh.NewClient(sc, chans, reqs)
-	defer client.Close()
 
-	sess, err := client.NewSession()
+	// Borne les canaux simultanés sur cette connexion.
+	select {
+	case pc.sem <- struct{}{}:
+		defer func() { <-pc.sem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	sess, err := pc.client.NewSession()
 	if err != nil {
-		return nil, fmt.Errorf("ouverture de session : %w", err)
+		// Connexion probablement tombée : on la jette et on réessaie une fois.
+		c.pool.drop(addr, user, port)
+		pc, derr := c.pool.get(ctx, c, addr, user, port)
+		if derr != nil {
+			return nil, derr
+		}
+		if sess, err = pc.client.NewSession(); err != nil {
+			return nil, fmt.Errorf("ouverture de session : %w", err)
+		}
 	}
 	defer sess.Close()
 
@@ -171,12 +173,8 @@ func (c *Client) run(ctx context.Context, addr, user string, port int, cmd strin
 	case <-done:
 	}
 	if runErr != nil {
-		// Le shim sort en 77 quand la policy refuse : le distinguer d'une
-		// panne évite de traiter un refus délibéré comme un incident.
 		var ee *ssh.ExitError
 		if ok := asExitError(runErr, &ee); ok {
-			// Un code brut n'apprend rien à qui lit l'interface. Les codes
-			// de restic sont documentés : autant les traduire.
 			switch ee.ExitStatus() {
 			case 77:
 				return nil, fmt.Errorf("refusé par la policy locale de l'hôte")

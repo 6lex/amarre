@@ -43,6 +43,17 @@ func (c *cache) put(key string, v any) {
 	c.mu.Unlock()
 }
 
+// getLong lit une entrée avec un TTL propre, pour les données immuables.
+func (c *cache) getLong(key string, ttl time.Duration) (any, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.m[key]
+	if !ok || time.Since(e.at) > ttl {
+		return nil, false
+	}
+	return e.val, true
+}
+
 // Invalidate purge les entrées d'un hôte, après une action qui change son état.
 func (c *cache) invalidate(host string) {
 	c.mu.Lock()
