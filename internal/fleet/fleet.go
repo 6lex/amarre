@@ -112,12 +112,17 @@ func (c *Client) run(ctx context.Context, addr, user string, port int, cmd strin
 		HostKeyCallback: c.hostKeys,
 		Timeout:         c.dialTimeout,
 	}
+	// knownhosts attend l'adresse sous la forme « hôte:port » : c'est elle
+	// qui sert à retrouver l'entrée correspondante, et il la normalise
+	// lui-même (« hôte » pour le port 22, « [hôte]:port » sinon). Lui passer
+	// le nom seul fait échouer toute vérification de clé d'hôte.
+	hostport := net.JoinHostPort(addr, strconv.Itoa(port))
 	d := net.Dialer{Timeout: c.dialTimeout}
-	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(addr, strconv.Itoa(port)))
+	conn, err := d.DialContext(ctx, "tcp", hostport)
 	if err != nil {
 		return nil, fmt.Errorf("connexion : %w", err)
 	}
-	sc, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
+	sc, chans, reqs, err := ssh.NewClientConn(conn, hostport, cfg)
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("poignée de main SSH : %w", err)

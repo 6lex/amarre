@@ -112,6 +112,19 @@ func (s *Store) UserByName(username string) (*User, error) {
 	return u, nil
 }
 
+// TOTPSecret rend le secret d'un compte, pour réafficher son QR code.
+func (s *Store) TOTPSecret(username string) (string, error) {
+	var secret sql.NullString
+	err := s.db.QueryRow(`SELECT totp_secret FROM users WHERE username = ?`, username).Scan(&secret)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNoUser
+	}
+	if err != nil {
+		return "", err
+	}
+	return secret.String, nil
+}
+
 func (s *Store) CountUsers() (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n)

@@ -22,6 +22,7 @@ import (
 	"github.com/6lex/amarre/internal/collector"
 	"github.com/6lex/amarre/internal/config"
 	"github.com/6lex/amarre/internal/fleet"
+	"github.com/6lex/amarre/internal/qr"
 	"github.com/6lex/amarre/internal/store"
 )
 
@@ -39,6 +40,8 @@ func main() {
 		err = cmdServe(log, os.Args[2:])
 	case "useradd":
 		err = cmdUserAdd(os.Args[2:])
+	case "totp":
+		err = cmdTOTP(os.Args[2:])
 	case "version":
 		fmt.Println("amarre", version)
 	default:
@@ -56,6 +59,7 @@ func usage() {
 
   amarre serve   --config amarre.yml
   amarre useradd --config amarre.yml --user <nom>
+  amarre totp    --config amarre.yml --user <nom>   # réaffiche le QR code
   amarre version
 `, version)
 }
@@ -190,16 +194,63 @@ func cmdUserAdd(args []string) error {
 	if err := st.CreateUser(*user, hash, secret); err != nil {
 		return fmt.Errorf("création du compte : %w", err)
 	}
+	fmt.Printf("\nCompte « %s » créé.\n", *user)
+	return showTOTP(*user, secret)
+}
+
+func cmdTOTP(args []string) error {
+	fs := flag.NewFlagSet("totp", flag.ExitOnError)
+	cfgPath := fs.String("config", "amarre.yml", "chemin de la configuration")
+	user := fs.String("user", "", "identifiant concerné")
+	_ = fs.Parse(args)
+	if *user == "" {
+		return errors.New("--user est obligatoire")
+	}
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		return err
+	}
+	st, err := store.Open(cfg.StateDB)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	secret, err := st.TOTPSecret(*user)
+	if err != nil {
+		return err
+	}
+	if secret == "" {
+		return fmt.Errorf("le compte %q n'a pas de second facteur", *user)
+	}
+	return showTOTP(*user, secret)
+}
+
+// showTOTP affiche le QR code et, en repli, le secret à saisir à la main.
+func showTOTP(user, secret string) error {
+	uri := auth.ProvisioningURI("Amarre", user, secret)
+	fmt.Printf("\nSecond facteur — à enregistrer dans ton application TOTP.\n\n")
+	if cols, rows, derr := qr.Dimensions(uri); derr == nil {
+		if w, _, terr := term.GetSize(int(syscall.Stdout)); terr == nil && w > 0 && cols > w {
+			fmt.Printf("  (terminal de %d colonnes, le code en demande %d —\n"+
+				"   élargis la fenêtre ou utilise la saisie manuelle ci-dessous)\n\n", w, cols)
+		}
+		_ = rows
+	}
+	img, err := qr.Terminal(uri)
+	if err == nil {
+		fmt.Print(img)
+	}
 	fmt.Printf(`
-Compte « %s » créé.
+Si le QR code ne passe pas, saisie manuelle :
 
-Second facteur — à enregistrer MAINTENANT dans ton application TOTP :
-
-  secret : %s
-  URI    : %s
+  secret    : %s
+  type      : temporel (TOTP)
+  algorithme: SHA-1
+  chiffres  : 6
+  période   : 30 s
 
 Sans ce code, la connexion sera refusée même avec le bon mot de passe.
-`, *user, secret, auth.ProvisioningURI("Amarre", *user, secret))
+`, secret)
 	return nil
 }
 
