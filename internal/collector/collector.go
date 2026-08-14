@@ -336,3 +336,52 @@ func (c *Collector) PolicyOf(ctx context.Context, host string) ([]fleet.PolicyEn
 	}
 	return nil, fmt.Errorf("hôte inconnu : %s", host)
 }
+
+// Action déclenche une opération sur un hôte. Elle est asynchrone : une
+// vérification d'intégrité peut durer des minutes sur un gros dépôt, et la
+// console ne doit pas retenir une requête HTTP pendant ce temps. Le résultat
+// arrive dans le journal d'audit.
+//
+// L'hôte reste seul juge : si sa policy refuse, le shim sort en 77 et c'est
+// ce refus qui est journalisé.
+func (c *Collector) Action(host, verb, actor, ip string) error {
+	var hc *config.HostConfig
+	for i := range c.cfg.Hosts {
+		if c.cfg.Hosts[i].Name == host {
+			hc = &c.cfg.Hosts[i]
+			break
+		}
+	}
+	if hc == nil {
+		return fmt.Errorf("hôte inconnu : %s", host)
+	}
+	switch verb {
+	case "check", "backup", "unlock":
+	default:
+		return fmt.Errorf("opération non proposée : %s", verb)
+	}
+	c.st.Audit(actor, ip, verb, host, "demandé")
+
+	go func(h config.HostConfig) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		var err error
+		switch verb {
+		case "check":
+			err = c.fl.Check(ctx, h.Addr, h.User, h.Port)
+		case "backup":
+			err = c.fl.Backup(ctx, h.Addr, h.User, h.Port)
+		case "unlock":
+			err = c.fl.Unlock(ctx, h.Addr, h.User, h.Port)
+		}
+		if err != nil {
+			c.log.Warn("opération en échec", "hôte", h.Name, "verbe", verb, "erreur", err)
+			c.st.Audit(actor, ip, verb, h.Name, "échec : "+err.Error())
+			return
+		}
+		c.st.Audit(actor, ip, verb, h.Name, "succès")
+		c.cache.invalidate(h.Name)
+		c.collectOne(context.Background(), h)
+	}(*hc)
+	return nil
+}

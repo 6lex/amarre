@@ -12,7 +12,7 @@
     <form method="get" action="/explorer" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
       <div style="flex:1;min-width:220px">
         <label for="h">Serveur</label>
-        <select id="h" name="host" onchange="this.form.submit()">
+        <select id="h" name="host">
           <option value="">— choisir un serveur —</option>
           {{range .AllHosts}}<option value="{{.Name}}" {{if eq .Name $.Host}}selected{{end}}>{{.Name}}</option>{{end}}
         </select>
@@ -20,13 +20,17 @@
       {{if .Snapshots}}
       <div style="flex:1;min-width:220px">
         <label for="s">Snapshot</label>
-        <select id="s" name="snap" onchange="this.form.submit()">
+        <select id="s" name="snap">
           {{range .Snapshots}}<option value="{{.ID}}" {{if eq .ID $.Snap}}selected{{end}}>{{.ID}} — {{stamp .Time}}</option>{{end}}
         </select>
       </div>
       {{end}}
       <input type="hidden" name="path" value="{{if .Host}}{{.Path}}{{else}}/{{end}}">
+      <div><button class="btn" type="submit" style="background:var(--accent);border-color:var(--accent);color:#fff">Parcourir</button></div>
     </form>
+    <p class="note" style="margin-top:9px">Aucun JavaScript : la politique de sécurité de contenu
+    de la console interdit tout script, y compris le sien. La navigation passe donc par des liens
+    et des formulaires — plus robuste, et vérifiable.</p>
   </div>
 </div>
 

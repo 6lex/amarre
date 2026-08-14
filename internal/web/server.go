@@ -66,6 +66,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET  /host/{name}", s.requireAuth(s.getHost))
 	s.mux.HandleFunc("GET  /alerts", s.requireAuth(s.getAlerts))
 	s.mux.HandleFunc("GET  /explorer", s.requireAuth(s.getExplorer))
+	s.mux.HandleFunc("POST /host/{name}/action", s.requireAuth(s.postAction))
 	s.mux.HandleFunc("GET  /audit", s.requireAuth(s.getAudit))
 }
 
@@ -218,7 +219,12 @@ func (s *Server) postLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "erreur interne", http.StatusInternalServerError)
 		return
 	}
-	if err := s.st.CreateSession(tok, u.ID, ipStr, sessionTTL); err != nil {
+	csrfTok, err := auth.NewToken()
+	if err != nil {
+		http.Error(w, "erreur interne", http.StatusInternalServerError)
+		return
+	}
+	if err := s.st.CreateSession(tok, u.ID, ipStr, csrfTok, sessionTTL); err != nil {
 		http.Error(w, "erreur interne", http.StatusInternalServerError)
 		return
 	}
@@ -245,12 +251,22 @@ func (s *Server) postLogout(w http.ResponseWriter, r *http.Request) {
 
 // ─── CSRF ───────────────────────────────────────────────────────────────
 
+// checkCSRF compare le jeton du formulaire à celui de la session. Avant la
+// connexion, la session n'existe pas encore : on retombe sur le cookie.
 func (s *Server) checkCSRF(r *http.Request) bool {
+	got := r.FormValue("csrf")
+	if got == "" {
+		return false
+	}
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		if want, err := s.st.SessionCSRF(c.Value); err == nil && want != "" {
+			return subtle.ConstantTimeCompare([]byte(want), []byte(got)) == 1
+		}
+	}
 	c, err := r.Cookie(csrfCookie)
 	if err != nil {
 		return false
 	}
-	got := r.FormValue("csrf")
 	return subtle.ConstantTimeCompare([]byte(c.Value), []byte(got)) == 1
 }
 
@@ -329,9 +345,8 @@ func (s *Server) getAlerts(w http.ResponseWriter, r *http.Request) {
 
 // page fabrique les données que le rail attend, communes à tous les écrans.
 func (s *Server) page(name string, r *http.Request, w http.ResponseWriter) map[string]any {
-	u, _ := s.currentUser(r)
-	csrf, _ := auth.NewToken()
-	s.setCookie(w, r, csrfCookie, csrf, 30*time.Minute)
+	u, tok := s.currentUser(r)
+	csrf, _ := s.st.SessionCSRF(tok)
 	hosts, _ := s.col.Fleet()
 	alerts := 0
 	for _, h := range hosts {
@@ -343,6 +358,21 @@ func (s *Server) page(name string, r *http.Request, w http.ResponseWriter) map[s
 		"Page": name, "User": u, "CSRF": csrf,
 		"NHosts": len(hosts), "NAlerts": alerts,
 	}
+}
+
+func (s *Server) postAction(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil || !s.checkCSRF(r) {
+		http.Error(w, "jeton invalide", http.StatusForbidden)
+		return
+	}
+	name := r.PathValue("name")
+	verb := r.FormValue("verb")
+	u, _ := s.currentUser(r)
+	ip, _ := remoteAddr(r)
+	if err := s.col.Action(name, verb, u.Username, ip.String()); err != nil {
+		s.st.Audit(u.Username, ip.String(), verb, name, "refusé : "+err.Error())
+	}
+	http.Redirect(w, r, "/host/"+name, http.StatusSeeOther)
 }
 
 // Crumb est un segment de fil d'Ariane.

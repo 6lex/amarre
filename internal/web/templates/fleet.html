@@ -29,7 +29,7 @@
       <th>ID</th><th>Tendance</th></tr></thead>
     <tbody>
     {{range .Hosts}}
-      <tr class="s-{{.State}} link" onclick="location='/host/{{.Name}}'">
+      <tr class="s-{{.State}}">
         <td class="host"><a href="/host/{{.Name}}" style="color:inherit">{{.Name}}</a>
           {{if .Err}}<span class="sub" title="{{.Err}}">{{short 70 .Err}}</span>{{end}}</td>
         <td><span class="pill {{if eq (printf "%s" .State) "ok"}}p-ok{{else if eq (printf "%s" .State) "unknown"}}p-warn{{else}}p-crit{{end}}">
@@ -48,6 +48,6 @@
   </table></div>
 </div>
 <p class="note">Le liseré gauche encode l'état, la pastille le nomme : un défaut se repère sans lire.
-Cliquer une ligne ouvre la fiche de l'hôte — snapshots, policy locale et occupation du dépôt sont
+Cliquer le nom d'un hôte ouvre sa fiche — snapshots, policy locale et occupation du dépôt sont
 alors demandés à la volée, jamais conservés ici.</p>
 </div></main></div></body></html>

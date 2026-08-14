@@ -79,6 +79,7 @@ func Open(path string) (*Store, error) {
 	for _, alter := range []string{
 		`ALTER TABLE checks ADD COLUMN repo_size INTEGER`,
 		`ALTER TABLE checks ADD COLUMN repo_raw INTEGER`,
+		`ALTER TABLE sessions ADD COLUMN csrf TEXT`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -142,12 +143,28 @@ func (s *Store) CountUsers() (int, error) {
 
 // ─── Sessions ───────────────────────────────────────────────────────────
 
-func (s *Store) CreateSession(token string, userID int64, ip string, ttl time.Duration) error {
+// CreateSession lie un jeton CSRF à la session, pour toute sa durée.
+//
+// Le régénérer à chaque affichage invaliderait le formulaire d'un onglet dès
+// qu'une autre page est chargée : deux onglets ouverts, et la première action
+// échoue en 403 sans explication.
+func (s *Store) CreateSession(token string, userID int64, ip, csrf string, ttl time.Duration) error {
 	now := time.Now()
 	_, err := s.db.Exec(
-		`INSERT INTO sessions (token, user_id, created_at, expires_at, remote_ip) VALUES (?,?,?,?,?)`,
-		token, userID, now.Unix(), now.Add(ttl).Unix(), ip)
+		`INSERT INTO sessions (token, user_id, created_at, expires_at, remote_ip, csrf)
+		 VALUES (?,?,?,?,?,?)`,
+		token, userID, now.Unix(), now.Add(ttl).Unix(), ip, csrf)
 	return err
+}
+
+// SessionCSRF rend le jeton CSRF attaché à une session.
+func (s *Store) SessionCSRF(token string) (string, error) {
+	var c sql.NullString
+	err := s.db.QueryRow(`SELECT csrf FROM sessions WHERE token = ?`, token).Scan(&c)
+	if err != nil {
+		return "", err
+	}
+	return c.String, nil
 }
 
 // SessionUser résout une session valide. La session est liée à l'IP qui l'a

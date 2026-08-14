@@ -109,6 +109,13 @@ func (c *Client) Backup(ctx context.Context, addr, user string, port int) error 
 	return err
 }
 
+// Unlock retire les verrous périmés du dépôt d'un hôte. Le shim n'expose
+// jamais --remove-all : un verrou vivant n'est pas touché.
+func (c *Client) Unlock(ctx context.Context, addr, user string, port int) error {
+	_, err := c.run(ctx, addr, user, port, "unlock")
+	return err
+}
+
 func (c *Client) run(ctx context.Context, addr, user string, port int, cmd string) ([]byte, error) {
 	cfg := &ssh.ClientConfig{
 		User:            user,
@@ -160,8 +167,21 @@ func (c *Client) run(ctx context.Context, addr, user string, port int, cmd strin
 		// Le shim sort en 77 quand la policy refuse : le distinguer d'une
 		// panne évite de traiter un refus délibéré comme un incident.
 		var ee *ssh.ExitError
-		if ok := asExitError(runErr, &ee); ok && ee.ExitStatus() == 77 {
-			return nil, fmt.Errorf("refusé par la policy locale de l'hôte")
+		if ok := asExitError(runErr, &ee); ok {
+			// Un code brut n'apprend rien à qui lit l'interface. Les codes
+			// de restic sont documentés : autant les traduire.
+			switch ee.ExitStatus() {
+			case 77:
+				return nil, fmt.Errorf("refusé par la policy locale de l'hôte")
+			case 78:
+				return nil, fmt.Errorf("policy absente sur l'hôte")
+			case 10:
+				return nil, fmt.Errorf("dépôt introuvable — ne pas réinitialiser sans vérifier")
+			case 11:
+				return nil, fmt.Errorf("dépôt verrouillé : un verrou périmé traîne, lancer « Déverrouiller »")
+			case 12:
+				return nil, fmt.Errorf("mot de passe de dépôt incorrect sur l'hôte")
+			}
 		}
 		return nil, fmt.Errorf("exécution distante : %w", runErr)
 	}

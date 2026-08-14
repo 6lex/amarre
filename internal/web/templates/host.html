@@ -8,7 +8,26 @@
     {{stateLabel (printf "%s" .View.State)}}</span>
   <span class="sp"></span>
   <span class="muted mono">{{.Host.User}}@{{.Host.Addr}}:{{.Host.Port}}</span>
+  <form method="post" action="/host/{{.Host.Name}}/action" style="display:inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="verb" value="check">
+    <button class="btn" type="submit">Vérifier l'intégrité</button>
+  </form>
+  <form method="post" action="/host/{{.Host.Name}}/action" style="display:inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="verb" value="unlock">
+    <button class="btn" type="submit" title="Retire les verrous périmés. Un verrou vivant n'est jamais touché.">Déverrouiller</button>
+  </form>
+  <form method="post" action="/host/{{.Host.Name}}/action" style="display:inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="verb" value="backup">
+    <button class="btn" type="submit"
+      style="background:var(--accent);border-color:var(--accent);color:#fff">Sauvegarder</button>
+  </form>
 </header>
+<p class="note" style="margin:-8px 0 14px">Les deux opérations sont asynchrones : une vérification
+peut durer plusieurs minutes sur un gros dépôt. Le résultat arrive dans le
+<a href="/audit">journal</a>. Si la policy de l'hôte refuse, c'est le refus qui y est consigné.</p>
 
 {{if .Err}}
 <div class="band"><div><h3>Hôte injoignable</h3><p class="mono">{{.Err}}</p></div></div>
