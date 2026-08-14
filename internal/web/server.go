@@ -340,8 +340,19 @@ func (s *Server) getHost(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	u := d["User"].(*store.User)
-	ip, _ := remoteAddr(r)
+	// Volontairement AUCUNE entrée d'audit pour l'affichage d'une fiche ni
+	// pour la navigation dans l'arborescence.
+	//
+	// Un journal doit dire ce qui a été FAIT, pas ce qui a été regardé :
+	// noyées sous une entrée par clic et par rafraîchissement, les opérations
+	// réelles deviennent introuvables. Et un rafraîchissement de navigateur
+	// n'est pas une consultation — l'entrée serait fausse en plus d'être
+	// inutile.
+	//
+	// La trace de qui a demandé quoi existe toujours, au bon endroit :
+	// /var/log/amarre-shim.log sur l'hôte enregistre chaque requête reçue
+	// avec son IP source. Un attaquant qui prendrait la console ne peut pas
+	// l'effacer, ce qui en fait une preuve plus solide que la nôtre.
 
 	// Navigation d'arborescence, désormais intégrée à la fiche.
 	snap := r.URL.Query().Get("snap")
@@ -359,7 +370,6 @@ func (s *Server) getHost(w http.ResponseWriter, r *http.Request) {
 			nodes = []fleet.Node{}
 		}
 		d["Nodes"] = nodes
-		s.st.Audit(u.Username, ip.String(), "navigation", name+":"+path, "succès")
 	} else {
 		d["Nodes"] = []fleet.Node{}
 	}
@@ -386,7 +396,6 @@ func (s *Server) getHost(w http.ResponseWriter, r *http.Request) {
 // getTreeFragment rend le seul listing, sans la coque de la page.
 func (s *Server) getTreeFragment(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	u, _ := s.currentUser(r)
 	snap := r.URL.Query().Get("snap")
 	path := r.URL.Query().Get("path")
 	if path == "" {
@@ -399,8 +408,6 @@ func (s *Server) getTreeFragment(w http.ResponseWriter, r *http.Request) {
 		nodes = []fleet.Node{}
 	}
 	d["Nodes"] = nodes
-	ip, _ := remoteAddr(r)
-	s.st.Audit(u.Username, ip.String(), "navigation", name+":"+path, "succès")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tpl.ExecuteTemplate(w, "tree.html", d); err != nil {
 		s.log.Error("rendu impossible", "gabarit", "tree.html", "erreur", err)
