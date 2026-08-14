@@ -1,0 +1,22 @@
+<!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="wrap">
+<header><h1>Journal</h1><span class="sp"></span><a href="/" class="muted">Parc</a></header>
+<div class="card">
+  <div class="card-h"><h2>200 dernières entrées</h2><span class="sp"></span>
+    <span class="muted">l'hôte tient le sien de son côté</span></div>
+  <table>
+    <thead><tr><th>Date</th><th>Acteur</th><th>Source</th><th>Action</th><th>Cible</th><th>Résultat</th></tr></thead>
+    <tbody>
+    {{range .Entries}}
+      <tr>
+        <td class="num">{{stamp .At}}</td>
+        <td class="mono">{{.Actor}}</td>
+        <td class="mono muted">{{.RemoteIP}}</td>
+        <td>{{.Action}}</td>
+        <td class="mono muted">{{.Target}}</td>
+        <td><span class="pill {{if eq .Outcome "succès"}}p-ok{{else}}p-crit{{end}}">{{.Outcome}}</span></td>
+      </tr>
+    {{else}}<tr><td colspan="6" class="muted">Rien à afficher.</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+</div></body></html>

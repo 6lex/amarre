@@ -1,0 +1,7 @@
+bin/
+*.db
+*.db-shm
+*.db-wal
+amarre.yml
+*.pem
+*.key

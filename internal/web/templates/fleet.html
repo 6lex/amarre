@@ -1,0 +1,40 @@
+<!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="wrap">
+<header>
+  <h1>Parc</h1>
+  <span class="pill {{if .Alerts}}p-crit{{else}}p-ok{{end}}">
+    {{if .Alerts}}{{.Alerts}} en défaut{{else}}tout à jour{{end}}</span>
+  <span class="sp"></span>
+  <a href="/audit" class="muted">Journal</a>
+  <form method="post" action="/logout" style="display:inline">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button class="btn" type="submit">{{.User.Username}} — sortir</button>
+  </form>
+</header>
+
+<div class="card">
+  <div class="card-h"><h2>Hôtes</h2><span class="sp"></span>
+    <span class="muted">collecte : {{stamp .Now}}</span></div>
+  <table>
+    <thead><tr><th>Hôte</th><th>État</th><th>Dernier snapshot</th><th>Âge</th>
+      <th style="text-align:right">Volume</th><th>ID</th></tr></thead>
+    <tbody>
+    {{range .Hosts}}
+      <tr class="s-{{.State}}">
+        <td class="host">{{.Name}}</td>
+        <td><span class="pill {{if eq (printf "%s" .State) "ok"}}p-ok{{else if eq (printf "%s" .State) "unknown"}}p-warn{{else}}p-crit{{end}}">
+          {{stateLabel (printf "%s" .State)}}</span></td>
+        <td>{{stamp .SnapshotAt}}</td>
+        <td class="num">{{age .Age}}</td>
+        <td class="num" style="text-align:right">{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}—{{end}}</td>
+        <td class="mono muted">{{if .SnapshotID}}{{.SnapshotID}}{{else}}{{.Err}}{{end}}</td>
+      </tr>
+    {{else}}
+      <tr><td colspan="6" class="muted">Aucun hôte configuré.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+<p class="muted" style="margin-top:14px">
+La veille porte sur l'absence de sauvegarde, pas sur l'échec : un hôte dont le
+plan cesse d'exister n'émet aucune erreur.</p>
+</div></body></html>

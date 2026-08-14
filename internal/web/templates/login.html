@@ -1,0 +1,15 @@
+<!doctype html><html lang="fr"><head>{{template "head"}}</head><body>
+<form class="login" method="post" action="/login">
+  <h1>Amarre</h1>
+  <p class="sub">Console de sauvegarde</p>
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label for="u">Identifiant</label>
+  <input id="u" name="username" autocomplete="username" autofocus required>
+  <label for="p">Mot de passe</label>
+  <input id="p" name="password" type="password" autocomplete="current-password" required>
+  <label for="t">Code à usage unique</label>
+  <input id="t" name="totp" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" placeholder="000000">
+  {{with .Error}}<div class="err">{{.}}</div>{{end}}
+  <button class="btn full" type="submit">Entrer</button>
+</form>
+</body></html>
