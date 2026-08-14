@@ -21,6 +21,7 @@ import (
 	"github.com/6lex/amarre/internal/auth"
 	"github.com/6lex/amarre/internal/collector"
 	"github.com/6lex/amarre/internal/config"
+	"github.com/6lex/amarre/internal/fleet"
 	"github.com/6lex/amarre/internal/store"
 )
 
@@ -64,6 +65,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET  /", s.requireAuth(s.getFleet))
 	s.mux.HandleFunc("GET  /host/{name}", s.requireAuth(s.getHost))
 	s.mux.HandleFunc("GET  /alerts", s.requireAuth(s.getAlerts))
+	s.mux.HandleFunc("GET  /explorer", s.requireAuth(s.getExplorer))
 	s.mux.HandleFunc("GET  /audit", s.requireAuth(s.getAudit))
 }
 
@@ -272,11 +274,10 @@ func (s *Server) getFleet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "erreur interne", http.StatusInternalServerError)
 		return
 	}
-	u, _ := s.currentUser(r)
-	csrf, _ := auth.NewToken()
-	s.setCookie(w, r, csrfCookie, csrf, 30*time.Minute)
-
-	totals := collector.Sum(hosts)
+	d := s.page("parc", r, w)
+	d["Hosts"] = hosts
+	d["Totals"] = collector.Sum(hosts)
+	d["Now"] = time.Now()
 	spark := map[string][]int64{}
 	for _, h := range hosts {
 		hist, err := s.st.History(h.Name, 20)
@@ -289,28 +290,23 @@ func (s *Server) getFleet(w http.ResponseWriter, r *http.Request) {
 		}
 		spark[h.Name] = vals
 	}
-	s.render(w, "fleet.html", map[string]any{
-		"Hosts": hosts, "User": u, "CSRF": csrf, "Totals": totals,
-		"Spark": spark, "Now": time.Now(),
-	})
+	d["Spark"] = spark
+	s.render(w, "fleet.html", d)
 }
 
 func (s *Server) getHost(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	u, _ := s.currentUser(r)
-	csrf, _ := auth.NewToken()
-	s.setCookie(w, r, csrfCookie, csrf, 30*time.Minute)
-
-	// Tout est demandé à la volée à l'hôte : la console ne conserve ni
-	// arborescence ni policy, elle ne fait que les relayer.
-	d, err := s.col.HostDetail(r.Context(), name)
+	d := s.page("parc", r, w)
+	det, err := s.col.HostDetail(r.Context(), name)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
+	u := d["User"].(*store.User)
 	ip, _ := remoteAddr(r)
 	s.st.Audit(u.Username, ip.String(), "consultation", name, "succès")
-	s.render(w, "host.html", map[string]any{"D": d, "User": u, "CSRF": csrf})
+	d["D"] = det
+	s.render(w, "host.html", d)
 }
 
 func (s *Server) getAlerts(w http.ResponseWriter, r *http.Request) {
@@ -325,11 +321,104 @@ func (s *Server) getAlerts(w http.ResponseWriter, r *http.Request) {
 			firing = append(firing, h)
 		}
 	}
+	d := s.page("alertes", r, w)
+	d["Firing"] = firing
+	d["Hosts"] = hosts
+	s.render(w, "alerts.html", d)
+}
+
+// page fabrique les données que le rail attend, communes à tous les écrans.
+func (s *Server) page(name string, r *http.Request, w http.ResponseWriter) map[string]any {
 	u, _ := s.currentUser(r)
 	csrf, _ := auth.NewToken()
 	s.setCookie(w, r, csrfCookie, csrf, 30*time.Minute)
-	s.render(w, "alerts.html", map[string]any{
-		"Firing": firing, "Hosts": hosts, "User": u, "CSRF": csrf})
+	hosts, _ := s.col.Fleet()
+	alerts := 0
+	for _, h := range hosts {
+		if h.State != collector.StateOK {
+			alerts++
+		}
+	}
+	return map[string]any{
+		"Page": name, "User": u, "CSRF": csrf,
+		"NHosts": len(hosts), "NAlerts": alerts,
+	}
+}
+
+// Crumb est un segment de fil d'Ariane.
+type Crumb struct{ Name, Path string }
+
+func crumbs(p string) []Crumb {
+	out := []Crumb{{Name: "/", Path: "/"}}
+	cur := ""
+	for _, seg := range strings.Split(strings.Trim(p, "/"), "/") {
+		if seg == "" {
+			continue
+		}
+		cur += "/" + seg
+		out = append(out, Crumb{Name: seg, Path: cur})
+	}
+	return out
+}
+
+func (s *Server) getExplorer(w http.ResponseWriter, r *http.Request) {
+	data := s.page("explorer", r, w)
+	u := data["User"].(*store.User)
+
+	host := r.URL.Query().Get("host")
+	snap := r.URL.Query().Get("snap")
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		path = "/"
+	}
+
+	data["AllHosts"] = s.col.Hosts()
+	data["Host"] = host
+	data["Snap"] = snap
+	data["Path"] = path
+	data["Crumbs"] = crumbs(path)
+	if host == "" {
+		s.render(w, "explorer.html", data)
+		return
+	}
+
+	// Tout est demandé à l'hôte au moment de l'affichage. La console ne
+	// conserve aucune arborescence : même sans clé de dépôt, un cache de
+	// chemins en clair serait une fuite d'information sur le contenu.
+	if snaps, err := s.col.SnapshotsOf(r.Context(), host); err == nil {
+		data["Snapshots"] = snaps
+		if snap == "" && len(snaps) > 0 {
+			snap = snaps[0].ID
+			data["Snap"] = snap
+		}
+	} else {
+		data["Err"] = err.Error()
+		s.render(w, "explorer.html", data)
+		return
+	}
+	if pol, err := s.col.PolicyOf(r.Context(), host); err == nil {
+		data["Policy"] = pol
+		for _, e := range pol {
+			switch e.Key {
+			case "SHIM_ALLOW_RESTORE":
+				data["CanRestore"] = e.Allowed
+			case "SHIM_STREAM_TO_CONSOLE":
+				data["CanStream"] = e.Allowed
+			}
+		}
+	}
+	// Nodes est TOUJOURS défini, même vide : un gabarit qui appelle len sur
+	// une clé absente échoue au rendu, et la page part alors tronquée sans
+	// que l'utilisateur comprenne pourquoi.
+	nodes, _, err := s.col.Browse(r.Context(), host, snap, path)
+	if err != nil {
+		data["Err"] = err.Error()
+		nodes = []fleet.Node{}
+	}
+	data["Nodes"] = nodes
+	ip, _ := remoteAddr(r)
+	s.st.Audit(u.Username, ip.String(), "navigation", host+":"+path, "succès")
+	s.render(w, "explorer.html", data)
 }
 
 func (s *Server) getAudit(w http.ResponseWriter, r *http.Request) {
@@ -338,10 +427,9 @@ func (s *Server) getAudit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "erreur interne", http.StatusInternalServerError)
 		return
 	}
-	u, _ := s.currentUser(r)
-	csrf, _ := auth.NewToken()
-	s.setCookie(w, r, csrfCookie, csrf, 30*time.Minute)
-	s.render(w, "audit.html", map[string]any{"Entries": entries, "User": u, "CSRF": csrf})
+	d := s.page("journal", r, w)
+	d["Entries"] = entries
+	s.render(w, "audit.html", d)
 }
 
 func (s *Server) renderLoginError(w http.ResponseWriter, r *http.Request, msg string) {

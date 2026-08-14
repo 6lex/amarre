@@ -7,6 +7,9 @@
 package fleet
 
 import (
+	"bufio"
+	"bytes"
+	"sort"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -247,4 +250,60 @@ func (c *Client) Policy(ctx context.Context, addr, user string, port int) ([]Pol
 		res = append(res, PolicyEntry{Key: strings.TrimSpace(k), Value: v, Allowed: v == "yes"})
 	}
 	return res, nil
+}
+
+// Node est une entrée d'arborescence dans un snapshot.
+type Node struct {
+	Name        string    `json:"name"`
+	Type        string    `json:"type"`
+	Path        string    `json:"path"`
+	Size        int64     `json:"size"`
+	Permissions string    `json:"permissions"`
+	MTime       time.Time `json:"mtime"`
+	StructType  string    `json:"struct_type"`
+}
+
+func (n Node) IsDir() bool { return n.Type == "dir" }
+
+// List rend le contenu IMMÉDIAT d'un répertoire dans un snapshot.
+//
+// « restic ls » sans --recursive ne descend pas : un niveau à la fois, ce qui
+// rend la navigation praticable même sur un moodledata de 300 000 fichiers.
+// La sortie est du JSON par lignes : un objet « snapshot » d'abord, puis un
+// objet « node » par entrée.
+func (c *Client) List(ctx context.Context, addr, user string, port int, snapshot, path string) ([]Node, error) {
+	if snapshot == "" {
+		snapshot = "latest"
+	}
+	if path == "" {
+		path = "/"
+	}
+	out, err := c.run(ctx, addr, user, port, fmt.Sprintf("ls %s %s", snapshot, path))
+	if err != nil {
+		return nil, err
+	}
+	var nodes []Node
+	sc := bufio.NewScanner(bytes.NewReader(out))
+	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	for sc.Scan() {
+		line := bytes.TrimSpace(sc.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var n Node
+		if err := json.Unmarshal(line, &n); err != nil {
+			continue
+		}
+		if n.StructType != "node" {
+			continue
+		}
+		nodes = append(nodes, n)
+	}
+	sort.Slice(nodes, func(i, j int) bool {
+		if nodes[i].IsDir() != nodes[j].IsDir() {
+			return nodes[i].IsDir()
+		}
+		return nodes[i].Name < nodes[j].Name
+	})
+	return nodes, sc.Err()
 }

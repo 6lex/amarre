@@ -23,10 +23,12 @@ type Collector struct {
 	st    *store.Store
 	log   *slog.Logger
 	limit chan struct{}
+	cache *cache
 }
 
 func New(cfg *config.Config, fl *fleet.Client, st *store.Store, log *slog.Logger) *Collector {
-	return &Collector{cfg: cfg, fl: fl, st: st, log: log, limit: make(chan struct{}, 4)}
+	return &Collector{cfg: cfg, fl: fl, st: st, log: log,
+		limit: make(chan struct{}, 4), cache: newCache(90 * time.Second)}
 }
 
 // Run boucle jusqu'à annulation du contexte.
@@ -85,6 +87,7 @@ func (c *Collector) collectOne(ctx context.Context, h config.HostConfig) {
 			chk.RepoRaw = rs.UncompressedSize
 		}
 	}
+	c.cache.invalidate(h.Name)
 	if err := c.st.RecordCheck(chk); err != nil {
 		c.log.Error("enregistrement du relevé impossible", "hôte", h.Name, "erreur", err)
 	}
@@ -220,12 +223,116 @@ func (c *Collector) HostDetail(ctx context.Context, name string) (*Detail, error
 
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	var err error
-	if d.Snapshots, err = c.fl.Snapshots(ctx, hc.Addr, hc.User, hc.Port); err != nil {
-		d.Err = err.Error()
-		return d, nil
+
+	// Les trois appels sont indépendants et coûtent ~2,5 s chacun parce que
+	// restic rouvre le dépôt distant à chaque fois. En série la fiche mettait
+	// 5 s à s'afficher ; en parallèle elle coûte le plus lent des trois.
+	var wg sync.WaitGroup
+	var snapErr error
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		d.Snapshots, snapErr = c.snapshotsCached(ctx, *hc)
+	}()
+	go func() {
+		defer wg.Done()
+		d.Stats, _ = c.statsCached(ctx, *hc)
+	}()
+	go func() {
+		defer wg.Done()
+		d.Policy, _ = c.policyCached(ctx, *hc)
+	}()
+	wg.Wait()
+
+	if snapErr != nil {
+		d.Err = snapErr.Error()
 	}
-	d.Stats, _ = c.fl.Stats(ctx, hc.Addr, hc.User, hc.Port)
-	d.Policy, _ = c.fl.Policy(ctx, hc.Addr, hc.User, hc.Port)
 	return d, nil
+}
+
+func (c *Collector) snapshotsCached(ctx context.Context, h config.HostConfig) ([]fleet.Snapshot, error) {
+	key := h.Name + "|snapshots"
+	if v, ok := c.cache.get(key); ok {
+		return v.([]fleet.Snapshot), nil
+	}
+	v, err := c.fl.Snapshots(ctx, h.Addr, h.User, h.Port)
+	if err != nil {
+		return nil, err
+	}
+	c.cache.put(key, v)
+	return v, nil
+}
+
+func (c *Collector) statsCached(ctx context.Context, h config.HostConfig) (*fleet.RepoStats, error) {
+	key := h.Name + "|stats"
+	if v, ok := c.cache.get(key); ok {
+		return v.(*fleet.RepoStats), nil
+	}
+	v, err := c.fl.Stats(ctx, h.Addr, h.User, h.Port)
+	if err != nil {
+		return nil, err
+	}
+	c.cache.put(key, v)
+	return v, nil
+}
+
+func (c *Collector) policyCached(ctx context.Context, h config.HostConfig) ([]fleet.PolicyEntry, error) {
+	key := h.Name + "|policy"
+	if v, ok := c.cache.get(key); ok {
+		return v.([]fleet.PolicyEntry), nil
+	}
+	v, err := c.fl.Policy(ctx, h.Addr, h.User, h.Port)
+	if err != nil {
+		return nil, err
+	}
+	c.cache.put(key, v)
+	return v, nil
+}
+
+// Browse rend le contenu d'un répertoire d'un snapshot, servi par l'hôte.
+// Rien n'est conservé : la console relaie, elle n'archive pas d'arborescence.
+func (c *Collector) Browse(ctx context.Context, host, snapshot, path string) ([]fleet.Node, *config.HostConfig, error) {
+	var hc *config.HostConfig
+	for i := range c.cfg.Hosts {
+		if c.cfg.Hosts[i].Name == host {
+			hc = &c.cfg.Hosts[i]
+			break
+		}
+	}
+	if hc == nil {
+		return nil, nil, fmt.Errorf("hôte inconnu : %s", host)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	nodes, err := c.fl.List(ctx, hc.Addr, hc.User, hc.Port, snapshot, path)
+	return nodes, hc, err
+}
+
+// SnapshotsOf liste les snapshots d'un hôte, pour le sélecteur de l'explorateur.
+func (c *Collector) SnapshotsOf(ctx context.Context, host string) ([]fleet.Snapshot, error) {
+	for i := range c.cfg.Hosts {
+		if c.cfg.Hosts[i].Name == host {
+			h := c.cfg.Hosts[i]
+			ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+			defer cancel()
+			return c.snapshotsCached(ctx, h)
+		}
+	}
+	return nil, fmt.Errorf("hôte inconnu : %s", host)
+}
+
+// Hosts rend la liste configurée, pour les sélecteurs de l'interface.
+func (c *Collector) Hosts() []config.HostConfig { return c.cfg.Hosts }
+
+// PolicyOf rend la policy locale d'un hôte.
+func (c *Collector) PolicyOf(ctx context.Context, host string) ([]fleet.PolicyEntry, error) {
+	for i := range c.cfg.Hosts {
+		if c.cfg.Hosts[i].Name == host {
+			h := c.cfg.Hosts[i]
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+			return c.policyCached(ctx, h)
+		}
+	}
+	return nil, fmt.Errorf("hôte inconnu : %s", host)
 }

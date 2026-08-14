@@ -1,5 +1,6 @@
-<!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="wrap">
-{{template "nav" .}}
+<!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="app">
+{{template "rail" .}}
+<main><div class="wrap">
 
 <div class="tiles">
   <div class="tile"><div class="v num">{{bytes .Totals.Protected}}</div><div class="k label">Données protégées</div></div>
@@ -49,4 +50,4 @@
 <p class="note">Le liseré gauche encode l'état, la pastille le nomme : un défaut se repère sans lire.
 Cliquer une ligne ouvre la fiche de l'hôte — snapshots, policy locale et occupation du dépôt sont
 alors demandés à la volée, jamais conservés ici.</p>
-</div></body></html>
+</div></main></div></body></html>

@@ -1,5 +1,6 @@
-<!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="wrap">
-{{template "nav" .}}
+<!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="app">
+{{template "rail" .}}
+<main><div class="wrap">
 {{with .D}}
 <header style="margin-top:-6px">
   <h1 class="mono">{{.Host.Name}}</h1>
@@ -80,4 +81,4 @@
   </div>
 </div>
 {{end}}
-</div></body></html>
+</div></main></div></body></html>
