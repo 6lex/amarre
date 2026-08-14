@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strings"
 	"time"
 
@@ -65,7 +66,16 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET  /", s.requireAuth(s.getFleet))
 	s.mux.HandleFunc("GET  /host/{name}", s.requireAuth(s.getHost))
 	s.mux.HandleFunc("GET  /alerts", s.requireAuth(s.getAlerts))
-	s.mux.HandleFunc("GET  /explorer", s.requireAuth(s.getExplorer))
+	// L'explorateur a rejoint la fiche d'hôte : tout ce qui concerne un
+	// serveur se lit au même endroit. La route est conservée pour ne pas
+	// casser un signet.
+	s.mux.HandleFunc("GET  /explorer", s.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if h := r.URL.Query().Get("host"); h != "" {
+			http.Redirect(w, r, "/host/"+h, http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	}))
 	s.mux.HandleFunc("POST /host/{name}/action", s.requireAuth(s.postAction))
 	s.mux.HandleFunc("GET  /audit", s.requireAuth(s.getAudit))
 }
@@ -320,8 +330,44 @@ func (s *Server) getHost(w http.ResponseWriter, r *http.Request) {
 	}
 	u := d["User"].(*store.User)
 	ip, _ := remoteAddr(r)
-	s.st.Audit(u.Username, ip.String(), "consultation", name, "succès")
+
+	// Navigation d'arborescence, désormais intégrée à la fiche.
+	snap := r.URL.Query().Get("snap")
+	if snap == "" && len(det.Snapshots) > 0 {
+		snap = det.Snapshots[0].ID
+	}
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		path = "/"
+	}
+	if snap != "" {
+		nodes, _, berr := s.col.Browse(r.Context(), name, snap, path)
+		if berr != nil {
+			d["BrowseErr"] = berr.Error()
+			nodes = []fleet.Node{}
+		}
+		d["Nodes"] = nodes
+		s.st.Audit(u.Username, ip.String(), "navigation", name+":"+path, "succès")
+	} else {
+		d["Nodes"] = []fleet.Node{}
+	}
+	d["Snap"] = snap
+	d["Path"] = path
+	d["Crumbs"] = crumbs(path)
+
+	for _, e := range det.Policy {
+		switch e.Key {
+		case "SHIM_ALLOW_RESTORE":
+			d["CanRestore"] = e.Allowed
+		case "SHIM_STREAM_TO_CONSOLE":
+			d["CanStream"] = e.Allowed
+		}
+	}
+
 	d["D"] = det
+	d["Actions"], _ = s.st.ActionsFor(name, 6)
+	d["Journal"], _ = s.st.AuditFor(name, 25)
+	d["Done"] = r.URL.Query().Get("done")
 	s.render(w, "host.html", d)
 }
 
@@ -378,7 +424,10 @@ func (s *Server) postAction(w http.ResponseWriter, r *http.Request) {
 	if err := s.col.Action(name, verb, u.Username, ip.String()); err != nil {
 		s.st.Audit(u.Username, ip.String(), verb, name, "refusé : "+err.Error())
 	}
-	http.Redirect(w, r, "/host/"+name, http.StatusSeeOther)
+	// L'accusé de réception passe par l'URL : sans script ni stockage de
+	// message côté serveur, c'est le moyen le plus simple de dire à
+	// l'opérateur que sa demande est partie.
+	http.Redirect(w, r, "/host/"+name+"?done="+url.QueryEscape(verb), http.StatusSeeOther)
 }
 
 // Crumb est un segment de fil d'Ariane.

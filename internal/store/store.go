@@ -280,6 +280,55 @@ type AuditEntry struct {
 	Outcome  string
 }
 
+// ActionsFor rend les dernières opérations menées sur un hôte. Sert à donner
+// un retour visible : une action asynchrone dont le résultat n'apparaît que
+// dans un journal séparé donne l'impression que le bouton ne fait rien.
+func (s *Store) ActionsFor(host string, limit int) ([]AuditEntry, error) {
+	rows, err := s.db.Query(
+		`SELECT at, actor, remote_ip, action, COALESCE(target,''), outcome
+		 FROM audit WHERE target = ? AND action IN ('check','backup','unlock')
+		 ORDER BY at DESC LIMIT ?`, host, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AuditEntry
+	for rows.Next() {
+		var e AuditEntry
+		var at int64
+		if err := rows.Scan(&at, &e.Actor, &e.RemoteIP, &e.Action, &e.Target, &e.Outcome); err != nil {
+			return nil, err
+		}
+		e.At = time.Unix(at, 0)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// AuditFor rend tout le journal concernant un hôte, opérations et
+// consultations confondues.
+func (s *Store) AuditFor(host string, limit int) ([]AuditEntry, error) {
+	rows, err := s.db.Query(
+		`SELECT at, actor, remote_ip, action, COALESCE(target,''), outcome
+		 FROM audit WHERE target = ? OR target LIKE ? ORDER BY at DESC LIMIT ?`,
+		host, host+":%", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AuditEntry
+	for rows.Next() {
+		var e AuditEntry
+		var at int64
+		if err := rows.Scan(&at, &e.Actor, &e.RemoteIP, &e.Action, &e.Target, &e.Outcome); err != nil {
+			return nil, err
+		}
+		e.At = time.Unix(at, 0)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) RecentAudit(limit int) ([]AuditEntry, error) {
 	rows, err := s.db.Query(
 		`SELECT at, actor, remote_ip, action, COALESCE(target,''), outcome
