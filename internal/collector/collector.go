@@ -37,6 +37,13 @@ type Collector struct {
 	// Un outil de supervision ne doit jamais nuire à ce qu'il supervise.
 	bo   map[string]*backoff
 	boMu sync.Mutex
+
+	trees *treeStore
+}
+
+func errUnknownHost(h string) error { return fmt.Errorf("hôte inconnu : %s", h) }
+func errTreeFailed(h string) error {
+	return fmt.Errorf("récupération de l'arborescence de %s en échec", h)
 }
 
 type backoff struct {
@@ -82,7 +89,7 @@ func (c *Collector) noteSuccess(host string) {
 func New(cfg *config.Config, fl *fleet.Client, st *store.Store, log *slog.Logger) *Collector {
 	return &Collector{cfg: cfg, fl: fl, st: st, log: log,
 		limit: make(chan struct{}, 4), cache: newCache(90 * time.Second),
-		bo: map[string]*backoff{}}
+		bo: map[string]*backoff{}, trees: newTreeStore()}
 }
 
 // Run boucle jusqu'à annulation du contexte.
@@ -381,21 +388,23 @@ func (c *Collector) Browse(ctx context.Context, host, snapshot, path string) ([]
 	if hc == nil {
 		return nil, nil, fmt.Errorf("hôte inconnu : %s", host)
 	}
-	// Le contenu d'un répertoire dans un snapshot donné est IMMUABLE : un
-	// snapshot ne change jamais. On peut donc le garder longtemps sans
-	// risque d'afficher une information périmée — remonter l'arborescence
-	// ou revenir sur ses pas devient instantané.
-	key := fmt.Sprintf("%s|ls|%s|%s", host, snapshot, path)
-	if v, ok := c.cache.getLong(key, 30*time.Minute); ok {
-		return v.([]fleet.Node), hc, nil
+	// L'arborescence COMPLÈTE du snapshot est récupérée en un seul appel,
+	// puis servie de mémoire. Mesuré sur crushaction : 13 026 entrées en
+	// 2,3 s, soit le même temps qu'un seul répertoire — le coût dominant est
+	// l'ouverture du dépôt SFTP, pas le parcours. Un appel remplace donc
+	// toute une session de navigation.
+	t, err := c.Tree(ctx, host, snapshot)
+	if err != nil {
+		// Repli : si l'arborescence complète échoue (trop volumineuse,
+		// délai dépassé), on retombe sur le listing d'un seul niveau.
+		c.log.Warn("arborescence complète indisponible, repli sur ls",
+			"hôte", host, "erreur", err)
+		lctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+		nodes, lerr := c.fl.List(lctx, hc.Addr, hc.User, hc.Port, snapshot, path)
+		return nodes, hc, lerr
 	}
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-	nodes, err := c.fl.List(ctx, hc.Addr, hc.User, hc.Port, snapshot, path)
-	if err == nil {
-		c.cache.put(key, nodes)
-	}
-	return nodes, hc, err
+	return t.Children(path), hc, nil
 }
 
 // SnapshotsOf liste les snapshots d'un hôte, pour le sélecteur de l'explorateur.
@@ -471,6 +480,7 @@ func (c *Collector) Action(host, verb, actor, ip string) error {
 		}
 		c.st.Audit(actor, ip, verb, h.Name, "succès")
 		c.cache.invalidate(h.Name)
+		c.InvalidateTrees(h.Name)
 		c.collectOne(context.Background(), h)
 	}(*hc)
 	return nil
