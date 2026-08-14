@@ -65,7 +65,14 @@ type resticSnapshot struct {
 	Hostname string    `json:"hostname"`
 	Paths    []string  `json:"paths"`
 	Summary  struct {
-		TotalBytesProcessed int64 `json:"total_bytes_processed"`
+		TotalBytesProcessed int64     `json:"total_bytes_processed"`
+		TotalFilesProcessed int64     `json:"total_files_processed"`
+		DataAdded           int64     `json:"data_added"`
+		DataAddedPacked     int64     `json:"data_added_packed"`
+		FilesNew            int64     `json:"files_new"`
+		FilesChanged        int64     `json:"files_changed"`
+		BackupStart         time.Time `json:"backup_start"`
+		BackupEnd           time.Time `json:"backup_end"`
 	} `json:"summary"`
 }
 
@@ -190,11 +197,14 @@ func (c *Client) run(ctx context.Context, addr, user string, port int, cmd strin
 
 // Snapshot est un instantané tel que l'hôte le décrit.
 type Snapshot struct {
-	ID    string    `json:"short_id"`
-	Time  time.Time `json:"time"`
-	Paths []string  `json:"paths"`
-	Tags  []string  `json:"tags"`
-	Size  int64     `json:"-"`
+	ID       string
+	Time     time.Time
+	Paths    []string
+	Size     int64
+	Added    int64         // volume nouveau, avant compression
+	Packed   int64         // ce que ce snapshot a réellement coûté au dépôt
+	Files    int64
+	Duration time.Duration // écart entre début et fin de sauvegarde
 }
 
 // Snapshots liste tous les instantanés du dépôt d'un hôte.
@@ -214,8 +224,18 @@ func (c *Client) Snapshots(ctx context.Context, addr, user string, port int) ([]
 		if id == "" && len(s.ID) >= 8 {
 			id = s.ID[:8]
 		}
-		res = append(res, Snapshot{ID: id, Time: s.Time, Paths: s.Paths,
-			Size: s.Summary.TotalBytesProcessed})
+		var dur time.Duration
+		if !s.Summary.BackupEnd.IsZero() && !s.Summary.BackupStart.IsZero() {
+			dur = s.Summary.BackupEnd.Sub(s.Summary.BackupStart)
+		}
+		res = append(res, Snapshot{
+			ID: id, Time: s.Time, Paths: s.Paths,
+			Size:     s.Summary.TotalBytesProcessed,
+			Added:    s.Summary.DataAdded,
+			Packed:   s.Summary.DataAddedPacked,
+			Files:    s.Summary.TotalFilesProcessed,
+			Duration: dur,
+		})
 	}
 	return res, nil
 }
@@ -326,4 +346,24 @@ func (c *Client) List(ctx context.Context, addr, user string, port int, snapshot
 		return nodes[i].Name < nodes[j].Name
 	})
 	return nodes, sc.Err()
+}
+
+
+// Excludes rend la liste des exclusions appliquées sur l'hôte. Savoir ce qui
+// n'est PAS sauvegardé est aussi important que l'inverse — et c'est ce qu'on
+// ne découvre d'ordinaire qu'au moment de restaurer.
+func (c *Client) Excludes(ctx context.Context, addr, user string, port int) ([]string, error) {
+	out, err := c.run(ctx, addr, user, port, "excludes")
+	if err != nil {
+		return nil, err
+	}
+	var res []string
+	for _, l := range strings.Split(string(out), "\n") {
+		l = strings.TrimSpace(l)
+		if l == "" || strings.HasPrefix(l, "#") {
+			continue
+		}
+		res = append(res, l)
+	}
+	return res, nil
 }

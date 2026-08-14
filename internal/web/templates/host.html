@@ -2,61 +2,70 @@
 {{template "rail" .}}
 <main><div class="wrap">
 {{with .D}}
-<header style="margin-top:-6px">
+<header>
   <h1 class="mono">{{.Host.Name}}</h1>
   <span class="pill {{if eq (printf "%s" .View.State) "ok"}}p-ok{{else if eq (printf "%s" .View.State) "unknown"}}p-warn{{else}}p-crit{{end}}">
     {{stateLabel (printf "%s" .View.State)}}</span>
   <span class="sp"></span>
   <span class="muted mono">{{.Host.User}}@{{.Host.Addr}}:{{.Host.Port}}</span>
   <form method="post" action="/host/{{.Host.Name}}/action" style="display:inline">
-    <input type="hidden" name="csrf" value="{{$.CSRF}}">
-    <input type="hidden" name="verb" value="check">
-    <button class="btn" type="submit">Vérifier l'intégrité</button>
-  </form>
-  <form method="post" action="/host/{{.Host.Name}}/action" style="display:inline">
-    <input type="hidden" name="csrf" value="{{$.CSRF}}">
-    <input type="hidden" name="verb" value="unlock">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="verb" value="unlock">
     <button class="btn" type="submit" title="Retire les verrous périmés. Un verrou vivant n'est jamais touché.">Déverrouiller</button>
   </form>
   <form method="post" action="/host/{{.Host.Name}}/action" style="display:inline">
-    <input type="hidden" name="csrf" value="{{$.CSRF}}">
-    <input type="hidden" name="verb" value="backup">
-    <button class="btn" type="submit"
-      style="background:var(--accent);border-color:var(--accent);color:#fff">Sauvegarder</button>
+    <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="verb" value="check">
+    <button class="btn" type="submit">Vérifier l'intégrité</button>
+  </form>
+  <form method="post" action="/host/{{.Host.Name}}/action" style="display:inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="verb" value="backup">
+    <button class="btn" type="submit" style="background:var(--accent);border-color:var(--accent);color:#fff">Sauvegarder</button>
   </form>
 </header>
-<p class="note" style="margin:-8px 0 14px">Les deux opérations sont asynchrones : une vérification
-peut durer plusieurs minutes sur un gros dépôt. Le résultat arrive dans le
-<a href="/audit">journal</a>. Si la policy de l'hôte refuse, c'est le refus qui y est consigné.</p>
+<p class="note" style="margin:-8px 0 14px">Ces opérations sont asynchrones — une vérification peut
+durer plusieurs minutes. Le résultat arrive dans le <a href="/audit">journal</a>. Si la policy de
+l'hôte refuse, c'est le refus qui y est consigné.</p>
 
-{{if .Err}}
-<div class="band"><div><h3>Hôte injoignable</h3><p class="mono">{{.Err}}</p></div></div>
-{{end}}
+{{if .Err}}<div class="band"><div><h3>Hôte injoignable</h3><p class="mono">{{.Err}}</p></div></div>{{end}}
 
 <div class="split">
   <div>
-    <div class="card">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="charts">
+      <div class="card" style="margin:0">
+        <div class="card-h"><h2>Ajouté au dépôt</h2><span class="sp"></span>
+          <span class="muted">Mo par sauvegarde</span></div>
+        <div class="card-b">{{barChart .Snapshots}}</div>
+      </div>
+      <div class="card" style="margin:0">
+        <div class="card-h"><h2>Durée</h2><span class="sp"></span>
+          <span class="muted">secondes</span></div>
+        <div class="card-b">{{lineChart .Snapshots}}</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
       <div class="card-h"><h2>Snapshots</h2><span class="sp"></span>
         <span class="pill p-mute">échéance attendue : {{age .Host.Expect}}</span></div>
       <div class="tw"><table>
-        <thead><tr><th>ID</th><th>Horodatage</th><th>Âge</th>
-          <th style="text-align:right">Volume</th><th>Chemins</th></tr></thead>
+        <thead><tr><th>ID</th><th>Horodatage</th><th>Âge</th><th style="text-align:right">Source</th>
+          <th style="text-align:right">Ajouté</th><th style="text-align:right">Fichiers</th><th style="text-align:right">Durée</th></tr></thead>
         <tbody>
         {{range .Snapshots}}
           <tr><td class="mono" style="color:var(--accent-ink)">{{.ID}}</td>
             <td class="num">{{stamp .Time}}</td>
             <td class="n">{{age (since .Time)}}</td>
-            <td class="n">{{if .Size}}{{bytes .Size}}{{else}}—{{end}}</td>
-            <td class="mono muted" title="{{join .Paths}}">{{short 46 (join .Paths)}}</td></tr>
+            <td class="n">{{bytes .Size}}</td>
+            <td class="n">{{if .Packed}}{{bytes .Packed}}{{else}}—{{end}}</td>
+            <td class="n">{{.Files}}</td>
+            <td class="n">{{duration .Duration}}</td></tr>
         {{else}}
-          <tr><td colspan="5" class="muted">Aucun snapshot lisible.</td></tr>
+          <tr><td colspan="7" class="muted">Aucun snapshot lisible.</td></tr>
         {{end}}
         </tbody>
       </table></div>
     </div>
 
     <div class="card">
-      <div class="card-h"><h2>Relevés récents</h2><span class="sp"></span>
+      <div class="card-h"><h2>Historique des relevés</h2><span class="sp"></span>
         <span class="muted">{{len .History}} collectes</span></div>
       <div class="card-b">
         {{if .History}}{{sparklineFromChecks .History}}{{else}}<span class="muted">Pas encore d'historique.</span>{{end}}
@@ -68,17 +77,44 @@ peut durer plusieurs minutes sur un gros dépôt. Le résultat arrive dans le
   </div>
 
   <div>
+    {{if .Snapshots}}
     <div class="card">
-      <div class="card-h"><h2>Policy locale</h2><span class="sp"></span>
-        <span class="pill p-ok">appliquée</span></div>
+      <div class="card-h"><h2>Chemins sauvegardés</h2></div>
+      <div class="card-b">
+        <ul class="plist">
+        {{range (index .Snapshots 0).Paths}}
+          <li><span class="mark allow">✓</span><code>{{.}}</code></li>
+        {{end}}
+        </ul>
+        <p class="note">Déclarés dans <span class="mono">restic_paths</span> côté Ansible, rendus
+        dans <span class="mono">/usr/local/sbin/restic-backup.sh</span> sur l'hôte.</p>
+      </div>
+    </div>
+    {{end}}
+
+    {{if .Excludes}}
+    <div class="card">
+      <div class="card-h"><h2>Exclusions</h2><span class="sp"></span>
+        <span class="pill p-mute">{{len .Excludes}}</span></div>
+      <div class="card-b">
+        <ul class="plist">
+        {{range .Excludes}}<li><span class="mark deny">✕</span><code>{{.}}</code></li>{{end}}
+        </ul>
+        <p class="note">Savoir ce qui n'est <strong>pas</strong> sauvegardé importe autant que
+        l'inverse — et c'est ce qu'on découvre d'ordinaire en pleine restauration. Fichier
+        <span class="mono">/etc/restic/excludes.txt</span>.</p>
+      </div>
+    </div>
+    {{end}}
+
+    <div class="card">
+      <div class="card-h"><h2>Policy locale</h2><span class="sp"></span><span class="pill p-ok">appliquée</span></div>
       <div class="card-b">
         <ul class="plist">
         {{range .Policy}}
           <li><span class="mark {{if .Allowed}}allow{{else}}deny{{end}}">{{if .Allowed}}✓{{else}}✕{{end}}</span>
-            <span><code>{{.Key}}</code><br><span class="muted">{{.Value}}</span></span></li>
-        {{else}}
-          <li class="muted">Policy illisible.</li>
-        {{end}}
+            <span><code>{{.Key}}</code></span></li>
+        {{else}}<li class="muted">Policy illisible.</li>{{end}}
         </ul>
         <p class="note">Ce fichier vit sur l'hôte, dans <span class="mono">/etc/amarre/policy.conf</span>.
         <strong>La console ne peut pas le modifier</strong> — seul un playbook le remplace.</p>

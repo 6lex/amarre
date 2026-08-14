@@ -108,7 +108,18 @@ var funcs = template.FuncMap{
 		}
 		return fmt.Sprintf("%.2f ×", f)
 	},
-	"sparkline": func(vals []int64) template.HTML { return sparkSVG(vals, 84, 20) },
+	"sparkline":  func(vals []int64) template.HTML { return sparkSVG(vals, 84, 20) },
+	"barChart":   barChart,
+	"lineChart":  lineChart,
+	"duration": func(d time.Duration) string {
+		if d <= 0 {
+			return "—"
+		}
+		if d < time.Minute {
+			return fmt.Sprintf("%.0f s", d.Seconds())
+		}
+		return fmt.Sprintf("%d min %02d", int(d.Minutes()), int(d.Seconds())%60)
+	},
 	"sparklineFromChecks": func(cs []store.Check) template.HTML {
 		vals := make([]int64, 0, len(cs))
 		for _, c := range cs {

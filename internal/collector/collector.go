@@ -195,6 +195,7 @@ type Detail struct {
 	Snapshots []fleet.Snapshot
 	Stats     *fleet.RepoStats
 	Policy    []fleet.PolicyEntry
+	Excludes  []string
 	History   []store.Check
 	Err       string
 }
@@ -229,7 +230,7 @@ func (c *Collector) HostDetail(ctx context.Context, name string) (*Detail, error
 	// 5 s à s'afficher ; en parallèle elle coûte le plus lent des trois.
 	var wg sync.WaitGroup
 	var snapErr error
-	wg.Add(3)
+	wg.Add(4)
 	go func() {
 		defer wg.Done()
 		d.Snapshots, snapErr = c.snapshotsCached(ctx, *hc)
@@ -241,6 +242,10 @@ func (c *Collector) HostDetail(ctx context.Context, name string) (*Detail, error
 	go func() {
 		defer wg.Done()
 		d.Policy, _ = c.policyCached(ctx, *hc)
+	}()
+	go func() {
+		defer wg.Done()
+		d.Excludes, _ = c.excludesCached(ctx, *hc)
 	}()
 	wg.Wait()
 
@@ -269,6 +274,19 @@ func (c *Collector) statsCached(ctx context.Context, h config.HostConfig) (*flee
 		return v.(*fleet.RepoStats), nil
 	}
 	v, err := c.fl.Stats(ctx, h.Addr, h.User, h.Port)
+	if err != nil {
+		return nil, err
+	}
+	c.cache.put(key, v)
+	return v, nil
+}
+
+func (c *Collector) excludesCached(ctx context.Context, h config.HostConfig) ([]string, error) {
+	key := h.Name + "|excludes"
+	if v, ok := c.cache.get(key); ok {
+		return v.([]string), nil
+	}
+	v, err := c.fl.Excludes(ctx, h.Addr, h.User, h.Port)
 	if err != nil {
 		return nil, err
 	}
