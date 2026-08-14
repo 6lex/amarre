@@ -73,6 +73,15 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("création du schéma : %w", err)
 	}
+	// CREATE TABLE IF NOT EXISTS n'ajoute jamais de colonne à une table
+	// existante : les ajouts se font par ALTER, dont l'échec est ignoré
+	// lorsque la colonne est déjà là.
+	for _, alter := range []string{
+		`ALTER TABLE checks ADD COLUMN repo_size INTEGER`,
+		`ALTER TABLE checks ADD COLUMN repo_raw INTEGER`,
+	} {
+		_, _ = db.Exec(alter)
+	}
 	return &Store{db: db}, nil
 }
 
@@ -181,6 +190,8 @@ type Check struct {
 	SnapshotID  string
 	SnapshotAt  time.Time
 	SizeBytes   int64
+	RepoSize    int64
+	RepoRaw     int64
 }
 
 func (s *Store) RecordCheck(c Check) error {
@@ -189,9 +200,11 @@ func (s *Store) RecordCheck(c Check) error {
 		snapAt = c.SnapshotAt.Unix()
 	}
 	_, err := s.db.Exec(`
-		INSERT INTO checks (host, collected_at, reachable, err, snapshot_id, snapshot_at, size_bytes)
-		VALUES (?,?,?,?,?,?,?)`,
-		c.Host, c.CollectedAt.Unix(), c.Reachable, c.Err, c.SnapshotID, snapAt, c.SizeBytes)
+		INSERT INTO checks (host, collected_at, reachable, err, snapshot_id, snapshot_at,
+		                    size_bytes, repo_size, repo_raw)
+		VALUES (?,?,?,?,?,?,?,?,?)`,
+		c.Host, c.CollectedAt.Unix(), c.Reachable, c.Err, c.SnapshotID, snapAt,
+		c.SizeBytes, c.RepoSize, c.RepoRaw)
 	return err
 }
 
@@ -199,7 +212,8 @@ func (s *Store) RecordCheck(c Check) error {
 func (s *Store) LatestChecks() ([]Check, error) {
 	rows, err := s.db.Query(`
 		SELECT host, collected_at, reachable, COALESCE(err,''), COALESCE(snapshot_id,''),
-		       COALESCE(snapshot_at,0), COALESCE(size_bytes,0)
+		       COALESCE(snapshot_at,0), COALESCE(size_bytes,0),
+		       COALESCE(repo_size,0), COALESCE(repo_raw,0)
 		FROM checks
 		WHERE id IN (SELECT MAX(id) FROM checks GROUP BY host)
 		ORDER BY host`)
@@ -212,7 +226,7 @@ func (s *Store) LatestChecks() ([]Check, error) {
 		var c Check
 		var collected, snapAt int64
 		if err := rows.Scan(&c.Host, &collected, &c.Reachable, &c.Err,
-			&c.SnapshotID, &snapAt, &c.SizeBytes); err != nil {
+			&c.SnapshotID, &snapAt, &c.SizeBytes, &c.RepoSize, &c.RepoRaw); err != nil {
 			return nil, err
 		}
 		c.CollectedAt = time.Unix(collected, 0)
@@ -258,6 +272,33 @@ func (s *Store) RecentAudit(limit int) ([]AuditEntry, error) {
 		}
 		e.At = time.Unix(at, 0)
 		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// History rend les n derniers relevés d'un hôte, du plus ancien au plus récent.
+// Sert aux courbes de tendance : elles se lisent de gauche à droite.
+func (s *Store) History(host string, n int) ([]Check, error) {
+	rows, err := s.db.Query(`
+		SELECT collected_at, reachable, COALESCE(size_bytes,0), COALESCE(repo_size,0)
+		FROM checks WHERE host = ? ORDER BY id DESC LIMIT ?`, host, n)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Check
+	for rows.Next() {
+		var c Check
+		var at int64
+		if err := rows.Scan(&at, &c.Reachable, &c.SizeBytes, &c.RepoSize); err != nil {
+			return nil, err
+		}
+		c.Host = host
+		c.CollectedAt = time.Unix(at, 0)
+		out = append(out, c)
+	}
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
 	}
 	return out, rows.Err()
 }

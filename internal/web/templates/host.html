@@ -1,0 +1,83 @@
+<!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="wrap">
+{{template "nav" .}}
+{{with .D}}
+<header style="margin-top:-6px">
+  <h1 class="mono">{{.Host.Name}}</h1>
+  <span class="pill {{if eq (printf "%s" .View.State) "ok"}}p-ok{{else if eq (printf "%s" .View.State) "unknown"}}p-warn{{else}}p-crit{{end}}">
+    {{stateLabel (printf "%s" .View.State)}}</span>
+  <span class="sp"></span>
+  <span class="muted mono">{{.Host.User}}@{{.Host.Addr}}:{{.Host.Port}}</span>
+</header>
+
+{{if .Err}}
+<div class="band"><div><h3>Hôte injoignable</h3><p class="mono">{{.Err}}</p></div></div>
+{{end}}
+
+<div class="split">
+  <div>
+    <div class="card">
+      <div class="card-h"><h2>Snapshots</h2><span class="sp"></span>
+        <span class="pill p-mute">échéance attendue : {{age .Host.Expect}}</span></div>
+      <div class="tw"><table>
+        <thead><tr><th>ID</th><th>Horodatage</th><th>Âge</th>
+          <th style="text-align:right">Volume</th><th>Chemins</th></tr></thead>
+        <tbody>
+        {{range .Snapshots}}
+          <tr><td class="mono" style="color:var(--accent-ink)">{{.ID}}</td>
+            <td class="num">{{stamp .Time}}</td>
+            <td class="n">{{age (since .Time)}}</td>
+            <td class="n">{{if .Size}}{{bytes .Size}}{{else}}—{{end}}</td>
+            <td class="mono muted" title="{{join .Paths}}">{{short 46 (join .Paths)}}</td></tr>
+        {{else}}
+          <tr><td colspan="5" class="muted">Aucun snapshot lisible.</td></tr>
+        {{end}}
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>Relevés récents</h2><span class="sp"></span>
+        <span class="muted">{{len .History}} collectes</span></div>
+      <div class="card-b">
+        {{if .History}}{{sparklineFromChecks .History}}{{else}}<span class="muted">Pas encore d'historique.</span>{{end}}
+        <p class="note">Volume source relevé à chaque collecte. Une chute brutale signale une
+        exclusion nouvelle ou un chemin disparu — pas nécessairement une panne, mais toujours
+        quelque chose à comprendre.</p>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-h"><h2>Policy locale</h2><span class="sp"></span>
+        <span class="pill p-ok">appliquée</span></div>
+      <div class="card-b">
+        <ul class="plist">
+        {{range .Policy}}
+          <li><span class="mark {{if .Allowed}}allow{{else}}deny{{end}}">{{if .Allowed}}✓{{else}}✕{{end}}</span>
+            <span><code>{{.Key}}</code><br><span class="muted">{{.Value}}</span></span></li>
+        {{else}}
+          <li class="muted">Policy illisible.</li>
+        {{end}}
+        </ul>
+        <p class="note">Ce fichier vit sur l'hôte, dans <span class="mono">/etc/amarre/policy.conf</span>.
+        <strong>La console ne peut pas le modifier</strong> — seul un playbook le remplace.</p>
+      </div>
+    </div>
+
+    {{with .Stats}}
+    <div class="card">
+      <div class="card-h"><h2>Dépôt</h2></div>
+      <div class="card-b"><dl class="kv">
+        <dt>Snapshots</dt><dd>{{.SnapshotsCount}}</dd>
+        <dt>Source</dt><dd>{{bytes .UncompressedSize}}</dd>
+        <dt>Occupé</dt><dd>{{bytes .TotalSize}}</dd>
+        <dt>Réduction</dt><dd>{{ratio .CompressionRatio}}</dd>
+        <dt>Blobs</dt><dd>{{.BlobCount}}</dd>
+      </dl></div>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+</div></body></html>

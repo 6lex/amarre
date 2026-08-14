@@ -1,9 +1,10 @@
 <!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="wrap">
-<header><h1>Journal</h1><span class="sp"></span><a href="/" class="muted">Parc</a></header>
+{{template "nav" .}}
+<header style="margin-top:-6px"><h1>Journal</h1>
+  <span class="muted">l'hôte tient le sien de son côté — un attaquant qui prend la console ne peut pas l'effacer</span></header>
 <div class="card">
-  <div class="card-h"><h2>200 dernières entrées</h2><span class="sp"></span>
-    <span class="muted">l'hôte tient le sien de son côté</span></div>
-  <table>
+  <div class="card-h"><h2>200 dernières entrées</h2></div>
+  <div class="tw"><table>
     <thead><tr><th>Date</th><th>Acteur</th><th>Source</th><th>Action</th><th>Cible</th><th>Résultat</th></tr></thead>
     <tbody>
     {{range .Entries}}
@@ -17,6 +18,6 @@
       </tr>
     {{else}}<tr><td colspan="6" class="muted">Rien à afficher.</td></tr>{{end}}
     </tbody>
-  </table>
+  </table></div>
 </div>
 </div></body></html>

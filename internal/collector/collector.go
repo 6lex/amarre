@@ -7,6 +7,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -76,6 +77,13 @@ func (c *Collector) collectOne(ctx context.Context, h config.HostConfig) {
 		chk.SnapshotID = st.SnapshotID
 		chk.SnapshotAt = st.Time
 		chk.SizeBytes = st.SizeBytes
+		// L'occupation réelle du dépôt est un appel séparé : son échec ne
+		// doit pas faire passer l'hôte pour injoignable alors que la
+		// sauvegarde, elle, est bien là.
+		if rs, serr := c.fl.Stats(ctx, h.Addr, h.User, h.Port); serr == nil {
+			chk.RepoSize = rs.TotalSize
+			chk.RepoRaw = rs.UncompressedSize
+		}
 	}
 	if err := c.st.RecordCheck(chk); err != nil {
 		c.log.Error("enregistrement du relevé impossible", "hôte", h.Name, "erreur", err)
@@ -93,6 +101,14 @@ const (
 	StateNoBackup State = "nobackup" // aucun snapshot connu
 )
 
+// Totals agrège le parc pour les tuiles de synthèse.
+type Totals struct {
+	Hosts, Alerts   int
+	Protected       int64
+	RepoSize        int64
+	Ratio           float64
+}
+
 type HostView struct {
 	Name        string
 	State       State
@@ -100,6 +116,7 @@ type HostView struct {
 	SnapshotID  string
 	SnapshotAt  time.Time
 	SizeBytes   int64
+	RepoSize    int64
 	Err         string
 	CollectedAt time.Time
 	Expect      time.Duration
@@ -135,6 +152,7 @@ func (c *Collector) Fleet() ([]HostView, error) {
 			v.SnapshotID = ch.SnapshotID
 			v.SnapshotAt = ch.SnapshotAt
 			v.SizeBytes = ch.SizeBytes
+			v.RepoSize = ch.RepoSize
 			v.CollectedAt = ch.CollectedAt
 			v.Age = now.Sub(ch.SnapshotAt)
 			if v.Age > h.Expect {
@@ -146,4 +164,68 @@ func (c *Collector) Fleet() ([]HostView, error) {
 		out = append(out, v)
 	}
 	return out, nil
+}
+
+// Totals compose la synthèse affichée en tête de la vue de parc.
+func Sum(hosts []HostView) Totals {
+	var t Totals
+	t.Hosts = len(hosts)
+	for _, h := range hosts {
+		if h.State != StateOK {
+			t.Alerts++
+		}
+		t.Protected += h.SizeBytes
+		t.RepoSize += h.RepoSize
+	}
+	if t.RepoSize > 0 {
+		t.Ratio = float64(t.Protected) / float64(t.RepoSize)
+	}
+	return t
+}
+
+// Detail rassemble ce qu'on affiche sur la fiche d'un hôte. Tout est demandé
+// À LA VOLÉE à l'hôte : la console ne conserve pas d'arborescence ni de
+// policy, elle ne fait que les relayer.
+type Detail struct {
+	Host      config.HostConfig
+	View      HostView
+	Snapshots []fleet.Snapshot
+	Stats     *fleet.RepoStats
+	Policy    []fleet.PolicyEntry
+	History   []store.Check
+	Err       string
+}
+
+func (c *Collector) HostDetail(ctx context.Context, name string) (*Detail, error) {
+	var hc *config.HostConfig
+	for i := range c.cfg.Hosts {
+		if c.cfg.Hosts[i].Name == name {
+			hc = &c.cfg.Hosts[i]
+			break
+		}
+	}
+	if hc == nil {
+		return nil, fmt.Errorf("hôte inconnu : %s", name)
+	}
+	d := &Detail{Host: *hc}
+
+	if views, err := c.Fleet(); err == nil {
+		for _, v := range views {
+			if v.Name == name {
+				d.View = v
+			}
+		}
+	}
+	d.History, _ = c.st.History(name, 30)
+
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	var err error
+	if d.Snapshots, err = c.fl.Snapshots(ctx, hc.Addr, hc.User, hc.Port); err != nil {
+		d.Err = err.Error()
+		return d, nil
+	}
+	d.Stats, _ = c.fl.Stats(ctx, hc.Addr, hc.User, hc.Port)
+	d.Policy, _ = c.fl.Policy(ctx, hc.Addr, hc.User, hc.Port)
+	return d, nil
 }

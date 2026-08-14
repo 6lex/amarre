@@ -4,48 +4,100 @@
 <title>Amarre</title>
 <style>
 :root{--ground:#F5F7F7;--surface:#fff;--surface-2:#EFF3F3;--ink:#111A1C;--ink-2:#43555A;
---ink-3:#7B8D91;--border:#DBE3E4;--accent:#0E7C86;--accent-soft:#E2F0F1;
+--ink-3:#7B8D91;--border:#DBE3E4;--grid:#E6ECEC;--accent:#0E7C86;--accent-ink:#0A5D65;--accent-soft:#E2F0F1;
 --ok:#2C7A4B;--ok-s:#E4F1E9;--warn:#9A6206;--warn-s:#F8EEDC;--crit:#AC2318;--crit-s:#FAE7E5;
 --mono:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
---sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+--shadow:0 1px 2px rgba(17,26,28,.05),0 4px 14px rgba(17,26,28,.05)}
 @media(prefers-color-scheme:dark){:root{--ground:#0C1113;--surface:#141B1D;--surface-2:#1B2426;
---ink:#E7EDEE;--ink-2:#A9BABE;--ink-3:#78898D;--border:#232F32;--accent:#40B3BC;--accent-soft:#10353A;
---ok:#54B37B;--ok-s:#12301F;--warn:#D19A31;--warn-s:#33260D;--crit:#E4695D;--crit-s:#3A1614}}
+--ink:#E7EDEE;--ink-2:#A9BABE;--ink-3:#78898D;--border:#232F32;--grid:#1E292B;--accent:#40B3BC;
+--accent-ink:#6FCBD2;--accent-soft:#10353A;--ok:#54B37B;--ok-s:#12301F;--warn:#D19A31;--warn-s:#33260D;
+--crit:#E4695D;--crit-s:#3A1614;--shadow:0 1px 2px rgba(0,0,0,.3),0 4px 14px rgba(0,0,0,.25)}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--ground);color:var(--ink);font:14px/1.5 var(--sans);
 -webkit-font-smoothing:antialiased}
-.wrap{max-width:1100px;margin:0 auto;padding:24px 20px 60px}
-header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 20px 60px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
 h1{font-size:19px;margin:0;letter-spacing:-.01em}
+h1.mono{font-size:16px}
 .sp{flex:1}
 .mono{font-family:var(--mono)}
 .num{font-variant-numeric:tabular-nums;font-family:var(--mono)}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
-.card-h{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center}
-.card-h h2{font-size:13.5px;margin:0}
+.muted{color:var(--ink-3);font-size:12px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.label{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:13px 15px;box-shadow:var(--shadow)}
+.tile .v{font-family:var(--mono);font-size:24px;font-weight:600;letter-spacing:-.02em;
+font-variant-numeric:tabular-nums;line-height:1.15}
+.tile .v small{font-size:13px;font-weight:500;color:var(--ink-3);margin-left:2px}
+.tile .k{margin-top:5px}
+.tile.alarm .v{color:var(--crit)}
+
+.band{display:flex;gap:13px;align-items:flex-start;background:var(--crit-s);border:1px solid var(--crit);
+border-left-width:3px;border-radius:10px;padding:13px 15px;margin-bottom:18px}
+.band h3{font-size:13.5px;color:var(--crit);margin:0}
+.band p{margin:5px 0 0;font-size:12.5px;color:var(--ink-2);max-width:78ch}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+overflow:hidden;box-shadow:var(--shadow);margin-bottom:14px}
+.card-h{padding:11px 15px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center}
+.card-h h2{font-size:13px;margin:0}
+.card-b{padding:15px}
+
+/* Le conteneur défile plutôt que la page : une colonne large ne doit jamais
+   pousser le corps du document hors de l'écran. */
+.tw{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;padding:9px 12px;font-size:10.5px;font-weight:600;letter-spacing:.09em;
 text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--border);white-space:nowrap}
-td{padding:10px 12px;border-bottom:1px solid var(--surface-2);white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid var(--grid);white-space:nowrap;vertical-align:middle}
 tbody tr:last-child td{border-bottom:none}
-td.host{font-family:var(--mono);font-size:12.5px;position:relative;padding-left:20px}
+tbody tr.link{cursor:pointer}
+tbody tr.link:hover td{background:var(--surface-2)}
+td.host{font-family:var(--mono);font-size:12.5px;position:relative;padding-left:19px;
+white-space:normal;min-width:220px}
 td.host::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ok)}
 tr.s-overdue td.host::before,tr.s-nobackup td.host::before{background:var(--crit)}
 tr.s-unknown td.host::before{background:var(--warn)}
+td.n{font-variant-numeric:tabular-nums;font-family:var(--mono);text-align:right}
+/* Le détail d'erreur vit sous le nom d'hôte, tronqué, jamais dans une colonne
+   de données : un message SSH complet déborde de n'importe quelle largeur. */
+.sub{display:block;color:var(--ink-3);font-family:var(--sans);font-size:11px;
+margin-top:2px;max-width:44ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:20px;
-font-size:11px;font-weight:600}
+font-size:11px;font-weight:600;white-space:nowrap}
 .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .p-ok{background:var(--ok-s);color:var(--ok)}
 .p-warn{background:var(--warn-s);color:var(--warn)}
 .p-crit{background:var(--crit-s);color:var(--crit)}
+.p-mute{background:var(--surface-2);color:var(--ink-3)}
+
 .btn{padding:7px 13px;border-radius:7px;border:1px solid var(--border);background:var(--surface);
 color:var(--ink);font:600 12.5px var(--sans);cursor:pointer}
 .btn:hover{background:var(--surface-2)}
-a{color:var(--accent)}
+
+.split{display:grid;grid-template-columns:1fr 320px;gap:14px;align-items:start}
+@media(max-width:980px){.split{grid-template-columns:1fr}}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:7px 14px;font-size:12.5px;margin:0}
+.kv dt{color:var(--ink-3)}
+.kv dd{margin:0;font-family:var(--mono);font-size:12px;text-align:right;
+overflow-wrap:anywhere}
+.plist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.plist li{display:flex;gap:9px;align-items:flex-start;font-size:12.5px}
+.mark{flex:none;width:15px;height:15px;border-radius:4px;display:grid;place-items:center;
+margin-top:1px;font-size:10px;font-weight:700}
+.allow{background:var(--ok-s);color:var(--ok)}
+.deny{background:var(--crit-s);color:var(--crit)}
+.plist code{font-family:var(--mono);font-size:11.5px;color:var(--ink-2)}
+
 form.login{max-width:340px;margin:12vh auto;background:var(--surface);border:1px solid var(--border);
-border-radius:10px;padding:26px}
+border-radius:10px;padding:26px;box-shadow:var(--shadow)}
 form.login h1{margin-bottom:4px}
-form.login p.sub{color:var(--ink-3);font-size:12.5px;margin:0 0 20px}
+form.login p.sub{color:var(--ink-3);font-size:12.5px;margin:0 0 20px;max-width:none;white-space:normal}
 label{display:block;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
 color:var(--ink-3);margin:14px 0 5px}
 input{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:7px;
@@ -54,6 +106,23 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(
 .err{background:var(--crit-s);color:var(--crit);border:1px solid var(--crit);border-radius:7px;
 padding:9px 11px;font-size:12.5px;margin-top:14px}
 .full{width:100%;margin-top:20px;background:var(--accent);border-color:var(--accent);color:#fff}
-.muted{color:var(--ink-3);font-size:12px}
+.note{font-size:12px;color:var(--ink-3);line-height:1.55;margin:10px 0 0;max-width:80ch}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 </style>
+{{end}}
+
+{{define "nav"}}
+<header>
+  <h1><a href="/" style="color:inherit">Amarre</a></h1>
+  {{if .Totals}}<span class="pill {{if .Totals.Alerts}}p-crit{{else}}p-ok{{end}}">
+    {{if .Totals.Alerts}}{{.Totals.Alerts}} en défaut{{else}}tout à jour{{end}}</span>{{end}}
+  <span class="sp"></span>
+  <a href="/" class="muted">Parc</a>
+  <a href="/alerts" class="muted">Alertes</a>
+  <a href="/audit" class="muted">Journal</a>
+  <form method="post" action="/logout" style="display:inline;margin-left:6px">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button class="btn" type="submit">{{.User.Username}} — sortir</button>
+  </form>
+</header>
 {{end}}

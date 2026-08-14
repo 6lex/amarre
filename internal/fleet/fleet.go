@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -162,4 +163,88 @@ func (c *Client) run(ctx context.Context, addr, user string, port int, cmd strin
 		return nil, fmt.Errorf("exécution distante : %w", runErr)
 	}
 	return out, nil
+}
+
+// Snapshot est un instantané tel que l'hôte le décrit.
+type Snapshot struct {
+	ID    string    `json:"short_id"`
+	Time  time.Time `json:"time"`
+	Paths []string  `json:"paths"`
+	Tags  []string  `json:"tags"`
+	Size  int64     `json:"-"`
+}
+
+// Snapshots liste tous les instantanés du dépôt d'un hôte.
+func (c *Client) Snapshots(ctx context.Context, addr, user string, port int) ([]Snapshot, error) {
+	out, err := c.run(ctx, addr, user, port, "snapshots")
+	if err != nil {
+		return nil, err
+	}
+	var raw []resticSnapshot
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, fmt.Errorf("liste de snapshots illisible : %w", err)
+	}
+	res := make([]Snapshot, 0, len(raw))
+	for i := len(raw) - 1; i >= 0; i-- {
+		s := raw[i]
+		id := s.ShortID
+		if id == "" && len(s.ID) >= 8 {
+			id = s.ID[:8]
+		}
+		res = append(res, Snapshot{ID: id, Time: s.Time, Paths: s.Paths,
+			Size: s.Summary.TotalBytesProcessed})
+	}
+	return res, nil
+}
+
+// RepoStats reflète « restic stats --mode raw-data --json ».
+type RepoStats struct {
+	TotalSize        int64   `json:"total_size"`
+	UncompressedSize int64   `json:"total_uncompressed_size"`
+	CompressionRatio float64 `json:"compression_ratio"`
+	SnapshotsCount   int     `json:"snapshots_count"`
+	BlobCount        int     `json:"total_blob_count"`
+}
+
+// Stats rend l'occupation réelle du dépôt, après compression et déduplication.
+func (c *Client) Stats(ctx context.Context, addr, user string, port int) (*RepoStats, error) {
+	out, err := c.run(ctx, addr, user, port, "stats")
+	if err != nil {
+		return nil, err
+	}
+	var st RepoStats
+	if err := json.Unmarshal(out, &st); err != nil {
+		return nil, fmt.Errorf("statistiques illisibles : %w", err)
+	}
+	return &st, nil
+}
+
+// PolicyEntry est une ligne de la policy locale d'un hôte.
+type PolicyEntry struct {
+	Key     string
+	Value   string
+	Allowed bool
+}
+
+// Policy rend la policy que l'hôte s'applique à lui-même. Elle n'est pas un
+// secret : c'est au contraire ce qui doit être visible pour être vérifié.
+func (c *Client) Policy(ctx context.Context, addr, user string, port int) ([]PolicyEntry, error) {
+	out, err := c.run(ctx, addr, user, port, "policy")
+	if err != nil {
+		return nil, err
+	}
+	var res []PolicyEntry
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		v = strings.Trim(strings.TrimSpace(v), `"`)
+		res = append(res, PolicyEntry{Key: strings.TrimSpace(k), Value: v, Allowed: v == "yes"})
+	}
+	return res, nil
 }

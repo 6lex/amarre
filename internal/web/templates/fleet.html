@@ -1,40 +1,52 @@
 <!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="wrap">
-<header>
-  <h1>Parc</h1>
-  <span class="pill {{if .Alerts}}p-crit{{else}}p-ok{{end}}">
-    {{if .Alerts}}{{.Alerts}} en défaut{{else}}tout à jour{{end}}</span>
-  <span class="sp"></span>
-  <a href="/audit" class="muted">Journal</a>
-  <form method="post" action="/logout" style="display:inline">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <button class="btn" type="submit">{{.User.Username}} — sortir</button>
-  </form>
-</header>
+{{template "nav" .}}
+
+<div class="tiles">
+  <div class="tile"><div class="v num">{{bytes .Totals.Protected}}</div><div class="k label">Données protégées</div></div>
+  <div class="tile"><div class="v num">{{bytes .Totals.RepoSize}}</div><div class="k label">Dépôts après dédup</div></div>
+  <div class="tile"><div class="v num">{{ratio .Totals.Ratio}}</div><div class="k label">Taux de réduction</div></div>
+  <div class="tile {{if .Totals.Alerts}}alarm{{end}}"><div class="v num">{{.Totals.Alerts}}<small>/{{.Totals.Hosts}}</small></div><div class="k label">Hôtes en défaut</div></div>
+</div>
+
+{{if .Totals.Alerts}}
+<div class="band">
+  <div>
+    <h3>{{.Totals.Alerts}} hôte{{if gt .Totals.Alerts 1}}s{{end}} sans sauvegarde valide</h3>
+    <p>La veille porte sur l'<strong>absence</strong> de sauvegarde, pas sur l'échec : un plan qui
+    cesse d'exister n'émet aucune erreur. C'est ainsi qu'une sauvegarde peut s'arrêter des mois
+    sans que rien ne le signale.</p>
+  </div>
+</div>
+{{end}}
 
 <div class="card">
   <div class="card-h"><h2>Hôtes</h2><span class="sp"></span>
     <span class="muted">collecte : {{stamp .Now}}</span></div>
-  <table>
+  <div class="tw"><table>
     <thead><tr><th>Hôte</th><th>État</th><th>Dernier snapshot</th><th>Âge</th>
-      <th style="text-align:right">Volume</th><th>ID</th></tr></thead>
+      <th style="text-align:right">Source</th><th style="text-align:right">Dépôt</th>
+      <th>ID</th><th>Tendance</th></tr></thead>
     <tbody>
     {{range .Hosts}}
-      <tr class="s-{{.State}}">
-        <td class="host">{{.Name}}</td>
+      <tr class="s-{{.State}} link" onclick="location='/host/{{.Name}}'">
+        <td class="host"><a href="/host/{{.Name}}" style="color:inherit">{{.Name}}</a>
+          {{if .Err}}<span class="sub" title="{{.Err}}">{{short 70 .Err}}</span>{{end}}</td>
         <td><span class="pill {{if eq (printf "%s" .State) "ok"}}p-ok{{else if eq (printf "%s" .State) "unknown"}}p-warn{{else}}p-crit{{end}}">
           {{stateLabel (printf "%s" .State)}}</span></td>
-        <td>{{stamp .SnapshotAt}}</td>
-        <td class="num">{{age .Age}}</td>
-        <td class="num" style="text-align:right">{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}—{{end}}</td>
-        <td class="mono muted">{{if .SnapshotID}}{{.SnapshotID}}{{else}}{{.Err}}{{end}}</td>
+        <td class="num">{{stamp .SnapshotAt}}</td>
+        <td class="n">{{age .Age}}</td>
+        <td class="n">{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}—{{end}}</td>
+        <td class="n">{{if .RepoSize}}{{bytes .RepoSize}}{{else}}—{{end}}</td>
+        <td class="mono muted">{{if .SnapshotID}}{{.SnapshotID}}{{else}}—{{end}}</td>
+        <td>{{sparkline (index $.Spark .Name)}}</td>
       </tr>
     {{else}}
-      <tr><td colspan="6" class="muted">Aucun hôte configuré.</td></tr>
+      <tr><td colspan="8" class="muted">Aucun hôte configuré.</td></tr>
     {{end}}
     </tbody>
-  </table>
+  </table></div>
 </div>
-<p class="muted" style="margin-top:14px">
-La veille porte sur l'absence de sauvegarde, pas sur l'échec : un hôte dont le
-plan cesse d'exister n'émet aucune erreur.</p>
+<p class="note">Le liseré gauche encode l'état, la pastille le nomme : un défaut se repère sans lire.
+Cliquer une ligne ouvre la fiche de l'hôte — snapshots, policy locale et occupation du dépôt sont
+alors demandés à la volée, jamais conservés ici.</p>
 </div></body></html>

@@ -1,0 +1,44 @@
+<!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="wrap">
+{{template "nav" .}}
+<header style="margin-top:-6px"><h1>Alertes</h1>
+  <span class="muted">la veille porte sur l'absence de sauvegarde, pas sur l'échec</span></header>
+
+<div class="card">
+  <div class="card-h"><h2>Veille d'échéance</h2><span class="sp"></span>
+    <span class="pill {{if .Firing}}p-crit{{else}}p-ok{{end}}">
+      {{if .Firing}}{{len .Firing}} en défaut{{else}}rien à signaler{{end}}</span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Hôte</th><th>Motif</th><th>Depuis</th><th>Fenêtre attendue</th><th></th></tr></thead>
+    <tbody>
+    {{range .Firing}}
+      <tr class="s-{{.State}}">
+        <td class="host">{{.Name}}{{if .Err}}<span class="sub" title="{{.Err}}">{{short 70 .Err}}</span>{{end}}</td>
+        <td><span class="pill {{if eq (printf "%s" .State) "unknown"}}p-warn{{else}}p-crit{{end}}">
+          {{stateLabel (printf "%s" .State)}}</span></td>
+        <td class="n">{{if .Age}}{{age .Age}}{{else}}—{{end}}</td>
+        <td class="n">{{age .Expect}}</td>
+        <td><a href="/host/{{.Name}}">Diagnostiquer</a></td>
+      </tr>
+    {{else}}
+      <tr><td colspan="5" class="muted">Tous les hôtes ont une sauvegarde dans leur fenêtre.</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <div class="card-h"><h2>Règles actives</h2></div>
+  <div class="card-b">
+    <ul class="plist">
+      <li><span class="mark allow">✓</span><span><strong>Échéance dépassée</strong><br>
+        <span class="muted">Aucun snapshot dans la fenêtre déclarée du plan. Se déclenche sur le
+        <em>silence</em>, pas sur une erreur — c'est la seule façon de détecter un plan qui cesse
+        d'exister.</span></span></li>
+      <li><span class="mark allow">✓</span><span><strong>Hôte injoignable</strong><br>
+        <span class="muted">Un hôte qui ne répond plus est traité comme en défaut, jamais comme au repos.</span></span></li>
+      <li><span class="mark allow">✓</span><span><strong>Dépôt sans snapshot</strong><br>
+        <span class="muted">Un dépôt joignable mais vide : signe d'une réinitialisation silencieuse.</span></span></li>
+    </ul>
+  </div>
+</div>
+</div></body></html>

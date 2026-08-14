@@ -62,6 +62,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /login", s.postLogin)
 	s.mux.HandleFunc("POST /logout", s.requireAuth(s.postLogout))
 	s.mux.HandleFunc("GET  /", s.requireAuth(s.getFleet))
+	s.mux.HandleFunc("GET  /host/{name}", s.requireAuth(s.getHost))
+	s.mux.HandleFunc("GET  /alerts", s.requireAuth(s.getAlerts))
 	s.mux.HandleFunc("GET  /audit", s.requireAuth(s.getAudit))
 }
 
@@ -274,15 +276,60 @@ func (s *Server) getFleet(w http.ResponseWriter, r *http.Request) {
 	csrf, _ := auth.NewToken()
 	s.setCookie(w, r, csrfCookie, csrf, 30*time.Minute)
 
-	var alerts int
+	totals := collector.Sum(hosts)
+	spark := map[string][]int64{}
 	for _, h := range hosts {
-		if h.State != collector.StateOK {
-			alerts++
+		hist, err := s.st.History(h.Name, 20)
+		if err != nil {
+			continue
 		}
+		var vals []int64
+		for _, c := range hist {
+			vals = append(vals, c.SizeBytes)
+		}
+		spark[h.Name] = vals
 	}
 	s.render(w, "fleet.html", map[string]any{
-		"Hosts": hosts, "User": u, "CSRF": csrf, "Alerts": alerts, "Now": time.Now(),
+		"Hosts": hosts, "User": u, "CSRF": csrf, "Totals": totals,
+		"Spark": spark, "Now": time.Now(),
 	})
+}
+
+func (s *Server) getHost(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	u, _ := s.currentUser(r)
+	csrf, _ := auth.NewToken()
+	s.setCookie(w, r, csrfCookie, csrf, 30*time.Minute)
+
+	// Tout est demandé à la volée à l'hôte : la console ne conserve ni
+	// arborescence ni policy, elle ne fait que les relayer.
+	d, err := s.col.HostDetail(r.Context(), name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	ip, _ := remoteAddr(r)
+	s.st.Audit(u.Username, ip.String(), "consultation", name, "succès")
+	s.render(w, "host.html", map[string]any{"D": d, "User": u, "CSRF": csrf})
+}
+
+func (s *Server) getAlerts(w http.ResponseWriter, r *http.Request) {
+	hosts, err := s.col.Fleet()
+	if err != nil {
+		http.Error(w, "erreur interne", http.StatusInternalServerError)
+		return
+	}
+	var firing []collector.HostView
+	for _, h := range hosts {
+		if h.State != collector.StateOK {
+			firing = append(firing, h)
+		}
+	}
+	u, _ := s.currentUser(r)
+	csrf, _ := auth.NewToken()
+	s.setCookie(w, r, csrfCookie, csrf, 30*time.Minute)
+	s.render(w, "alerts.html", map[string]any{
+		"Firing": firing, "Hosts": hosts, "User": u, "CSRF": csrf})
 }
 
 func (s *Server) getAudit(w http.ResponseWriter, r *http.Request) {
