@@ -167,6 +167,14 @@ func (s *Store) SessionCSRF(token string) (string, error) {
 	return c.String, nil
 }
 
+// SetSessionCSRF attache un jeton à une session qui n'en a pas.
+// Nécessaire pour les sessions ouvertes avant que le jeton ne soit lié à la
+// session : sans cela, leurs formulaires seraient refusés jusqu'à déconnexion.
+func (s *Store) SetSessionCSRF(token, csrf string) error {
+	_, err := s.db.Exec(`UPDATE sessions SET csrf = ? WHERE token = ?`, csrf, token)
+	return err
+}
+
 // SessionUser résout une session valide. La session est liée à l'IP qui l'a
 // ouverte : un cookie volé et rejoué depuis ailleurs ne vaut rien.
 func (s *Store) SessionUser(token, ip string) (*User, error) {

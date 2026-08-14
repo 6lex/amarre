@@ -347,6 +347,12 @@ func (s *Server) getAlerts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) page(name string, r *http.Request, w http.ResponseWriter) map[string]any {
 	u, tok := s.currentUser(r)
 	csrf, _ := s.st.SessionCSRF(tok)
+	if csrf == "" {
+		// Session ouverte avant que le jeton ne soit porté par la session :
+		// on lui en attache un plutôt que de refuser ses formulaires.
+		csrf, _ = auth.NewToken()
+		_ = s.st.SetSessionCSRF(tok, csrf)
+	}
 	hosts, _ := s.col.Fleet()
 	alerts := 0
 	for _, h := range hosts {

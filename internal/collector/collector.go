@@ -24,11 +24,65 @@ type Collector struct {
 	log   *slog.Logger
 	limit chan struct{}
 	cache *cache
+
+	// backoff espace les tentatives sur un hôte qui échoue.
+	//
+	// Sans lui, la console retente toutes les 15 minutes, indéfiniment. Sur
+	// un hôte dont la clé de parc n'est pas encore autorisée, chaque tentative
+	// est un échec d'authentification SSH — et le fail2ban de l'hôte finit par
+	// bannir la console. Constaté le 14/08/2026 : 14 échecs en 6 h ont suffi
+	// à faire passer formation-dpo.impact-rgpd.fr de « handshake failed » à
+	// « i/o timeout », c'est-à-dire au bannissement.
+	//
+	// Un outil de supervision ne doit jamais nuire à ce qu'il supervise.
+	bo   map[string]*backoff
+	boMu sync.Mutex
+}
+
+type backoff struct {
+	fails   int
+	nextTry time.Time
+}
+
+// maxBackoff plafonne l'espacement : au-delà, l'hôte serait supervisé si
+// rarement que la veille d'échéance perdrait son sens.
+const maxBackoff = 6 * time.Hour
+
+// due indique si un hôte peut être interrogé maintenant.
+func (c *Collector) due(host string) bool {
+	c.boMu.Lock()
+	defer c.boMu.Unlock()
+	b, ok := c.bo[host]
+	return !ok || time.Now().After(b.nextTry)
+}
+
+func (c *Collector) noteFailure(host string) time.Duration {
+	c.boMu.Lock()
+	defer c.boMu.Unlock()
+	b, ok := c.bo[host]
+	if !ok {
+		b = &backoff{}
+		c.bo[host] = b
+	}
+	b.fails++
+	d := c.cfg.Interval << min(b.fails, 8)
+	if d > maxBackoff {
+		d = maxBackoff
+	}
+	b.nextTry = time.Now().Add(d)
+	return d
+}
+
+func (c *Collector) noteSuccess(host string) {
+	c.boMu.Lock()
+	delete(c.bo, host)
+	c.boMu.Unlock()
 }
 
 func New(cfg *config.Config, fl *fleet.Client, st *store.Store, log *slog.Logger) *Collector {
 	return &Collector{cfg: cfg, fl: fl, st: st, log: log,
-		limit: make(chan struct{}, 4), cache: newCache(90 * time.Second)}
+		limit: make(chan struct{}, 4), cache: newCache(90 * time.Second),
+		bo: map[string]*backoff{}}
 }
 
 // Run boucle jusqu'à annulation du contexte.
@@ -53,6 +107,9 @@ func (c *Collector) CollectAll(ctx context.Context) {
 		if h.Disabled {
 			continue
 		}
+		if !c.due(h.Name) {
+			continue
+		}
 		wg.Add(1)
 		go func(h config.HostConfig) {
 			defer wg.Done()
@@ -73,8 +130,11 @@ func (c *Collector) collectOne(ctx context.Context, h config.HostConfig) {
 	if err != nil {
 		chk.Reachable = false
 		chk.Err = err.Error()
-		c.log.Warn("collecte en échec", "hôte", h.Name, "erreur", err)
+		wait := c.noteFailure(h.Name)
+		c.log.Warn("collecte en échec", "hôte", h.Name, "erreur", err,
+			"prochaine tentative dans", wait.Round(time.Minute))
 	} else {
+		c.noteSuccess(h.Name)
 		chk.Reachable = true
 		chk.SnapshotID = st.SnapshotID
 		chk.SnapshotAt = st.Time
