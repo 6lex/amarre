@@ -1,0 +1,7 @@
+{{define "outcome"}}
+{{if gt (len .O) 34}}
+<details class="oc"><summary class="outcome {{.C}}">{{.S}}<span class="chev">▸</span></summary></details>
+{{else}}
+<span class="outcome {{.C}}">{{.O}}</span>
+{{end}}
+{{end}}

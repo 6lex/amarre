@@ -39,6 +39,25 @@ type Collector struct {
 	boMu sync.Mutex
 
 	trees *treeStore
+
+	// running empêche deux opérations simultanées sur le même hôte.
+	//
+	// « restic check » prend un verrou EXCLUSIF. Deux vérifications lancées à
+	// moins d'une seconde d'intervalle — un double clic, ou un clic suivi
+	// d'un rechargement — et la seconde échoue sur le verrou de la première,
+	// en laissant l'opérateur devant un message de verrouillage incompréhensible.
+	//
+	// Mieux vaut refuser franchement la seconde demande que de la laisser
+	// produire une erreur qui accuse le dépôt.
+	running map[string]string
+	runMu   sync.Mutex
+}
+
+// ErrBusy signale qu'une opération est déjà en cours sur l'hôte.
+type ErrBusy struct{ Host, Verb string }
+
+func (e ErrBusy) Error() string {
+	return fmt.Sprintf("une opération « %s » est déjà en cours sur %s — attendre qu'elle se termine", e.Verb, e.Host)
 }
 
 func errUnknownHost(h string) error { return fmt.Errorf("hôte inconnu : %s", h) }
@@ -89,7 +108,8 @@ func (c *Collector) noteSuccess(host string) {
 func New(cfg *config.Config, fl *fleet.Client, st *store.Store, log *slog.Logger) *Collector {
 	return &Collector{cfg: cfg, fl: fl, st: st, log: log,
 		limit: make(chan struct{}, 4), cache: newCache(90 * time.Second),
-		bo: map[string]*backoff{}, trees: newTreeStore()}
+		bo: map[string]*backoff{}, trees: newTreeStore(),
+		running: map[string]string{}}
 }
 
 // Run boucle jusqu'à annulation du contexte.
@@ -459,9 +479,23 @@ func (c *Collector) Action(host, verb, actor, ip string) error {
 	default:
 		return fmt.Errorf("opération non proposée : %s", verb)
 	}
+	// Un seul travail à la fois par hôte.
+	c.runMu.Lock()
+	if cur, busy := c.running[host]; busy {
+		c.runMu.Unlock()
+		return ErrBusy{Host: host, Verb: cur}
+	}
+	c.running[host] = verb
+	c.runMu.Unlock()
+
 	c.st.Audit(actor, ip, verb, host, "demandé")
 
 	go func(h config.HostConfig) {
+		defer func() {
+			c.runMu.Lock()
+			delete(c.running, h.Name)
+			c.runMu.Unlock()
+		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		var err error
@@ -484,4 +518,12 @@ func (c *Collector) Action(host, verb, actor, ip string) error {
 		c.collectOne(context.Background(), h)
 	}(*hc)
 	return nil
+}
+
+// Busy dit si une opération est en cours sur un hôte, et laquelle.
+func (c *Collector) Busy(host string) (string, bool) {
+	c.runMu.Lock()
+	defer c.runMu.Unlock()
+	v, ok := c.running[host]
+	return v, ok
 }

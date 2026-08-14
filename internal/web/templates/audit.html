@@ -15,8 +15,9 @@
         <td class="mono muted">{{.RemoteIP}}</td>
         <td>{{.Action}}</td>
         <td class="mono muted">{{.Target}}</td>
-        <td><span class="pill {{if eq .Outcome "succès"}}p-ok{{else}}p-crit{{end}}">{{.Outcome}}</span></td>
-      </tr>
+        <td>{{template "outcome" (dict "O" .Outcome "C" (outcomeClass .Outcome) "S" (outcomeShort .Outcome))}}</td></tr>
+        {{if gt (len .Outcome) 34}}<tr class="detail"><td colspan="6">{{.Outcome}}</td></tr>{{end}}
+      
     {{else}}<tr><td colspan="6" class="muted">Rien à afficher.</td></tr>{{end}}
     </tbody>
   </table></div>

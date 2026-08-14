@@ -459,6 +459,8 @@ func (s *Server) postAction(w http.ResponseWriter, r *http.Request) {
 	ip, _ := remoteAddr(r)
 	if err := s.col.Action(name, verb, u.Username, ip.String()); err != nil {
 		s.st.Audit(u.Username, ip.String(), verb, name, "refusé : "+err.Error())
+		http.Redirect(w, r, "/host/"+name+"?busy="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
 	}
 	// L'accusé de réception passe par l'URL : sans script ni stockage de
 	// message côté serveur, c'est le moyen le plus simple de dire à

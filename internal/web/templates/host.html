@@ -25,6 +25,23 @@
 durer plusieurs minutes. Le résultat arrive dans le <a href="/audit">journal</a>. Si la policy de
 l'hôte refuse, c'est le refus qui y est consigné.</p>
 
+{{if $.Busy}}
+<div class="card" style="border-color:var(--warn);background:var(--warn-s)">
+  <div class="card-b" style="padding:11px 15px;font-size:13px">
+    <strong>Demande refusée</strong> — {{$.Busy}}
+  </div>
+</div>
+{{end}}
+
+{{if $.Running}}
+<div class="card" style="border-color:var(--accent);background:var(--accent-soft)">
+  <div class="card-b" style="padding:11px 15px;font-size:13px">
+    <strong>Opération en cours</strong> — «&nbsp;{{$.Running}}&nbsp;» tourne sur l'hôte.
+    Les boutons resteront sans effet tant qu'elle n'est pas terminée.
+  </div>
+</div>
+{{end}}
+
 {{if $.Done}}
 <div class="card" style="border-color:var(--accent);background:var(--accent-soft)">
   <div class="card-b" style="padding:11px 15px;font-size:13px">
@@ -117,8 +134,8 @@ l'hôte refuse, c'est le refus qui y est consigné.</p>
         <tbody>
         {{range $.Actions}}
           <tr><td class="num">{{stamp .At}}</td><td>{{.Action}}</td><td class="mono">{{.Actor}}</td>
-            <td><span class="pill {{if eq .Outcome "succès"}}p-ok{{else if eq .Outcome "demandé"}}p-mute{{else}}p-crit{{end}}"
-              title="{{.Outcome}}">{{short 46 .Outcome}}</span></td></tr>
+            <td>{{template "outcome" (dict "O" .Outcome "C" (outcomeClass .Outcome) "S" (outcomeShort .Outcome))}}</td></tr>
+        {{if gt (len .Outcome) 34}}<tr class="detail"><td colspan="4">{{.Outcome}}</td></tr>{{end}}
         {{else}}
           <tr><td colspan="4" class="muted">Aucune opération lancée depuis la console.</td></tr>
         {{end}}
@@ -148,8 +165,8 @@ l'hôte refuse, c'est le refus qui y est consigné.</p>
             <td>{{.Action}}{{if ne .Target $.D.Host.Name}}<span class="muted mono" style="font-size:11px"> {{short 28 .Target}}</span>{{end}}</td>
             <td class="mono">{{.Actor}}</td>
             <td class="mono muted">{{.RemoteIP}}</td>
-            <td><span class="pill {{if eq .Outcome "succès"}}p-ok{{else if eq .Outcome "demandé"}}p-mute{{else}}p-crit{{end}}"
-              title="{{.Outcome}}">{{short 40 .Outcome}}</span></td></tr>
+            <td>{{template "outcome" (dict "O" .Outcome "C" (outcomeClass .Outcome) "S" (outcomeShort .Outcome))}}</td></tr>
+        {{if gt (len .Outcome) 34}}<tr class="detail"><td colspan="5">{{.Outcome}}</td></tr>{{end}}
         {{else}}
           <tr><td colspan="5" class="muted">Rien encore.</td></tr>
         {{end}}

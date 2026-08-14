@@ -159,6 +159,13 @@ func (c *Client) run(ctx context.Context, addr, user string, port int, cmd strin
 	// La commande est envoyée telle quelle ; côté hôte, la directive
 	// command= la remplace par le shim, qui la reçoit dans
 	// SSH_ORIGINAL_COMMAND et la confronte à sa policy.
+	// stderr est capturé séparément : Output() ne rend que la sortie
+	// standard, et l'explication de restic part sur l'erreur standard. Sans
+	// ça, un échec se résume à un code numérique — on perd la seule phrase
+	// qui dit ce qui s'est réellement passé.
+	var errBuf bytes.Buffer
+	sess.Stderr = &errBuf
+
 	done := make(chan struct{})
 	var out []byte
 	var runErr error
@@ -173,6 +180,11 @@ func (c *Client) run(ctx context.Context, addr, user string, port int, cmd strin
 	case <-done:
 	}
 	if runErr != nil {
+		detail := strings.TrimSpace(errBuf.String())
+		// Certaines sorties JSON de restic portent l'erreur sur stdout.
+		if detail == "" {
+			detail = strings.TrimSpace(lastLine(out))
+		}
 		var ee *ssh.ExitError
 		if ok := asExitError(runErr, &ee); ok {
 			switch ee.ExitStatus() {
@@ -181,12 +193,18 @@ func (c *Client) run(ctx context.Context, addr, user string, port int, cmd strin
 			case 78:
 				return nil, fmt.Errorf("policy absente sur l'hôte")
 			case 10:
-				return nil, fmt.Errorf("dépôt introuvable — ne pas réinitialiser sans vérifier")
+				return nil, fmt.Errorf("dépôt introuvable — ne pas réinitialiser sans vérifier. %s", detail)
 			case 11:
-				return nil, fmt.Errorf("dépôt verrouillé : un verrou périmé traîne, lancer « Déverrouiller »")
+				return nil, fmt.Errorf("verrouillage impossible. %s", detail)
 			case 12:
 				return nil, fmt.Errorf("mot de passe de dépôt incorrect sur l'hôte")
 			}
+			if detail != "" {
+				return nil, fmt.Errorf("code %d : %s", ee.ExitStatus(), detail)
+			}
+		}
+		if detail != "" {
+			return nil, fmt.Errorf("%w — %s", runErr, detail)
 		}
 		return nil, fmt.Errorf("exécution distante : %w", runErr)
 	}
@@ -364,4 +382,16 @@ func (c *Client) Excludes(ctx context.Context, addr, user string, port int) ([]s
 		res = append(res, l)
 	}
 	return res, nil
+}
+
+
+// lastLine rend la dernière ligne non vide d'une sortie.
+func lastLine(b []byte) string {
+	lines := bytes.Split(b, []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		if s := strings.TrimSpace(string(lines[i])); s != "" {
+			return s
+		}
+	}
+	return ""
 }

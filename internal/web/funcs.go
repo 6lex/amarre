@@ -139,6 +139,34 @@ var funcs = template.FuncMap{
 		}
 		return sparkSVG(vals, 640, 60)
 	},
+	// outcomeShort rend l'état en un mot : c'est lui qu'on lit en balayant
+	// une colonne. Le détail complet vit dans la ligne dépliable.
+	"outcomeShort": func(s string) string {
+		switch {
+		case s == "succès":
+			return "succès"
+		case s == "demandé":
+			return "demandé"
+		case strings.HasPrefix(s, "refusé"):
+			return "refusé"
+		case strings.HasPrefix(s, "échec"):
+			return "échec"
+		default:
+			return "échec"
+		}
+	},
+	"outcomeClass": func(s string) string {
+		switch {
+		case s == "succès":
+			return "o-ok"
+		case s == "demandé":
+			return "o-mute"
+		case strings.HasPrefix(s, "refusé"):
+			return "o-warn"
+		default:
+			return "o-crit"
+		}
+	},
 	"stateLabel": func(s string) string {
 		switch s {
 		case "ok":
