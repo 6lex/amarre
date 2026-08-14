@@ -54,6 +54,18 @@ func sparkSVG(vals []int64, w, h float64) template.HTML {
 }
 
 var funcs = template.FuncMap{
+	// dict construit un contexte pour un sous-gabarit : le listing est rendu
+	// à la fois dans la page complète et comme fragment autonome, à partir du
+	// même code — sinon les deux divergent au premier changement.
+	"dict": func(kv ...any) map[string]any {
+		m := map[string]any{}
+		for i := 0; i+1 < len(kv); i += 2 {
+			if k, ok := kv[i].(string); ok {
+				m[k] = kv[i+1]
+			}
+		}
+		return m
+	},
 	"age": func(d time.Duration) string {
 		switch {
 		case d <= 0:

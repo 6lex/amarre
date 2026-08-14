@@ -29,6 +29,9 @@ import (
 //go:embed templates/*.html
 var templatesFS embed.FS
 
+//go:embed static/*
+var staticFS embed.FS
+
 const (
 	sessionCookie = "amarre_session"
 	csrfCookie    = "amarre_csrf"
@@ -65,6 +68,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /logout", s.requireAuth(s.postLogout))
 	s.mux.HandleFunc("GET  /", s.requireAuth(s.getFleet))
 	s.mux.HandleFunc("GET  /host/{name}", s.requireAuth(s.getHost))
+	// Fragment d'arborescence : renvoie le listing seul, pour un
+	// remplacement partiel côté navigateur.
+	s.mux.HandleFunc("GET  /host/{name}/tree", s.requireAuth(s.getTreeFragment))
+	s.mux.Handle("GET /static/", http.StripPrefix("/", http.FileServerFS(staticFS)))
 	s.mux.HandleFunc("GET  /alerts", s.requireAuth(s.getAlerts))
 	// L'explorateur a rejoint la fiche d'hôte : tout ce qui concerne un
 	// serveur se lit au même endroit. La route est conservée pour ne pas
@@ -123,8 +130,13 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		// Pas de script externe, pas de style externe, pas d'iframe.
+		// script-src 'self' autorise UNIQUEMENT les fichiers servis par la
+		// console. Toujours aucun script en ligne, aucun eval, aucun code
+		// tiers : la relâche est d'un cran, pas d'un ordre de grandeur.
 		h.Set("Content-Security-Policy",
-			"default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+			"default-src 'none'; script-src 'self'; connect-src 'self'; "+
+				"style-src 'unsafe-inline'; img-src data:; form-action 'self'; "+
+				"frame-ancestors 'none'; base-uri 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
@@ -369,6 +381,30 @@ func (s *Server) getHost(w http.ResponseWriter, r *http.Request) {
 	d["Journal"], _ = s.st.AuditFor(name, 25)
 	d["Done"] = r.URL.Query().Get("done")
 	s.render(w, "host.html", d)
+}
+
+// getTreeFragment rend le seul listing, sans la coque de la page.
+func (s *Server) getTreeFragment(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	u, _ := s.currentUser(r)
+	snap := r.URL.Query().Get("snap")
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		path = "/"
+	}
+	d := map[string]any{"Host": name, "Snap": snap, "Path": path, "Crumbs": crumbs(path)}
+	nodes, _, err := s.col.Browse(r.Context(), name, snap, path)
+	if err != nil {
+		d["BrowseErr"] = err.Error()
+		nodes = []fleet.Node{}
+	}
+	d["Nodes"] = nodes
+	ip, _ := remoteAddr(r)
+	s.st.Audit(u.Username, ip.String(), "navigation", name+":"+path, "succès")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tpl.ExecuteTemplate(w, "tree.html", d); err != nil {
+		s.log.Error("rendu impossible", "gabarit", "tree.html", "erreur", err)
+	}
 }
 
 func (s *Server) getAlerts(w http.ResponseWriter, r *http.Request) {

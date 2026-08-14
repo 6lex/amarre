@@ -77,6 +77,12 @@ overflow:hidden;box-shadow:var(--shadow);margin-bottom:14px}
 /* Le conteneur défile plutôt que la page : une colonne large ne doit jamais
    pousser le corps du document hors de l'écran. */
 .tw{overflow-x:auto}
+/* Indicateur de chargement piloté par aria-busy : pas de script pour
+   l'afficher, juste un attribut que le navigateur voit changer. */
+#tree{position:relative;transition:opacity .12s}
+#tree[aria-busy="true"]{opacity:.45}
+#tree[aria-busy="true"]::after{content:"chargement…";position:absolute;top:8px;right:14px;
+font:600 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;padding:9px 12px;font-size:10.5px;font-weight:600;letter-spacing:.09em;
 text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--border);white-space:nowrap}
