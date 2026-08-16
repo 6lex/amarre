@@ -57,14 +57,19 @@
           <div class="v">{{if .DeepOK}}OK{{else}}KO{{end}}</div>
           <div class="k">Relecture {{.DeepSubset}}</div></div>{{end}}
       {{end}}
-      {{if .Updates.Total}}<div class="m {{if .Updates.Security}}warn{{end}}">
-        <div class="v">{{.Updates.Total}}</div><div class="k">En attente · {{.Updates.Security}} sécu</div></div>{{end}}
+      {{if .Updates.Total}}<div class="m {{if .Updates.Security}}warn{{end}}"
+        title="{{.Updates.Total}} paquet{{if gt .Updates.Total 1}}s{{end}} pourrai{{if gt .Updates.Total 1}}en{{end}}t être mis à jour, dont {{.Updates.Security}} de sécurité.">
+        <div class="v">{{.Updates.Total}}</div>
+        <div class="k">En attente<br>dont {{.Updates.Security}} de sécurité</div></div>{{end}}
       {{with .LastUpgrade}}{{if .At}}
-      <div class="m" title="{{.Count}} paquets, {{if .Auto}}automatique{{else}}manuelle{{end}}{{if .Packages}} — {{join .Packages}}{{end}}">
+      <div class="m" title="Mise à jour du {{stamp .Time}} — {{.Count}} paquet{{if gt .Count 1}}s{{end}}{{if .Packages}} : {{join .Packages}}{{end}}. {{if .Auto}}Appliquée par unattended-upgrades.{{else}}Lancée à la main.{{end}}">
         <div class="v">{{age .Age}}</div>
-        <div class="k">Dernier upgrade · {{.Count}} pq {{if .Auto}}auto{{else}}manuel{{end}}</div></div>
+        <div class="k">Dernière mise à jour<br>
+          {{.Count}} paquet{{if gt .Count 1}}s{{end}} ·
+          {{if .Auto}}automatique{{else}}à la main{{end}}</div></div>
       {{else}}
-      <div class="m warn"><div class="v">—</div><div class="k">Aucun upgrade tracé</div></div>
+      <div class="m warn"><div class="v">—</div>
+        <div class="k">Aucune mise à jour<br>tracée dans apt</div></div>
       {{end}}{{end}}
     </div>
     {{end}}

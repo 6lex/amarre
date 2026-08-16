@@ -120,7 +120,10 @@ line-height:1.45;word-break:break-word}
 .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin-top:12px}
 .m{background:var(--surface-2);border-radius:8px;padding:9px 11px}
 .m .v{font-family:var(--mono);font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
-.m .k{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin-top:3px}
+/* Deux lignes autorisées : un libellé abrégé jusqu'à l'illisible ne fait
+   gagner que quelques pixels, et coûte une question à chaque lecture. */
+.m .k{font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+color:var(--ink-3);margin-top:4px;line-height:1.35;text-wrap:balance}
 .m.bad .v{color:var(--crit)}
 .m.warn .v{color:var(--warn)}
 .ok-line{display:flex;align-items:center;gap:8px;color:var(--ok);font-size:13px;font-weight:600}
