@@ -470,6 +470,56 @@ func (s *Store) PurgeHealthHistory(keep time.Duration) error {
 	return err
 }
 
+// HealthPoint est un relevé brut.
+type HealthPoint struct {
+	At      time.Time
+	State   string
+	Crit    int
+	Warn    int
+	Summary string
+}
+
+// HealthSeries rend les relevés d'un hôte sur une fenêtre, du plus ancien au
+// plus récent. Les agrégations se font ensuite en mémoire : à quelques
+// milliers de points, c'est plus simple et plus souple qu'en SQL.
+func (s *Store) HealthSeries(host string, since time.Time) ([]HealthPoint, error) {
+	rows, err := s.db.Query(`
+		SELECT at, state, crit, warn, COALESCE(summary,'')
+		FROM health_history WHERE host = ? AND at >= ? ORDER BY at`, host, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []HealthPoint
+	for rows.Next() {
+		var p HealthPoint
+		var at int64
+		if err := rows.Scan(&at, &p.State, &p.Crit, &p.Warn, &p.Summary); err != nil {
+			return nil, err
+		}
+		p.At = time.Unix(at, 0)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// HealthCoverage rend la première et la dernière mesure connues, tous hôtes
+// confondus. Sert à ne pas proposer une fenêtre plus large que les données.
+func (s *Store) HealthCoverage() (first, last time.Time, n int, err error) {
+	var f, l sql.NullInt64
+	err = s.db.QueryRow(`SELECT MIN(at), MAX(at), COUNT(*) FROM health_history`).Scan(&f, &l, &n)
+	if err != nil {
+		return
+	}
+	if f.Valid {
+		first = time.Unix(f.Int64, 0)
+	}
+	if l.Valid {
+		last = time.Unix(l.Int64, 0)
+	}
+	return
+}
+
 // HourlyState est l'état d'un hôte sur une heure.
 type HourlyState struct {
 	Hour    time.Time

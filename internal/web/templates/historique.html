@@ -1,69 +1,85 @@
 <!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="app">
 {{template "rail" .}}
 <main><div class="wrap">
+{{with .T}}
 <header><h1>Historique</h1>
-  <span class="muted">état heure par heure sur 14 jours</span>
   <span class="sp"></span>
-  <a href="/sante" class="muted">retour à Santé</a>
+  <span class="wsel">
+    {{range $.Windows}}<a href="/historique?w={{.Key}}"
+      class="{{if eq .Key $.T.Window.Key}}on{{end}}">{{.Label}}</a>{{end}}
+  </span>
 </header>
 
-<div class="card">
-  <div class="card-h"><h2>Frise d'état</h2><span class="sp"></span>
-    <span class="legend">
-      <span class="lg"><i class="c c-ok"></i>tout va bien</span>
-      <span class="lg"><i class="c c-warn"></i>à surveiller</span>
-      <span class="lg"><i class="c c-crit"></i>critique</span>
-      <span class="lg"><i class="c c-unknown"></i>aucune donnée</span>
-    </span>
-  </div>
-  <div class="card-b">
-    <div class="tl-scroll">
-      <div class="tl">
-        <div class="tl-axis">
-          {{range .Days}}<span class="tl-day" style="grid-column:{{add .Index 1}}">{{.Label}}</span>{{end}}
-        </div>
-        {{range .Rows}}
-        <div class="tl-name mono" title="{{.Name}}">{{.Name}}</div>
-        <div class="tl-cells">
-          {{range .Cells}}<i class="c c-{{.State}}" title="{{.Title}}"></i>{{end}}
-        </div>
-        <div class="tl-sum">
-          {{if .CritH}}<span class="pill p-crit">{{.CritH}} h</span>{{end}}
-          {{if .WarnH}}<span class="pill p-warn">{{.WarnH}} h</span>{{end}}
-          {{if and (not .CritH) (not .WarnH)}}<span class="pill p-ok">sain</span>{{end}}
-        </div>
-        {{end}}
-      </div>
-    </div>
-    <p class="note">Une case par heure, du plus ancien à gauche. Chaque heure porte le
-    <strong>pire état observé</strong> : une panne de dix minutes ne doit pas disparaître parce que
-    les trois autres relevés de l'heure étaient bons. Survoler une case en donne le détail — l'état
-    ne tient jamais à la seule couleur.</p>
+{{if lt .Mesures 100}}
+<div class="card" style="border-color:var(--accent);background:var(--accent-soft)">
+  <div class="card-b" style="padding:11px 15px;font-size:13px">
+    <strong>Historique en cours de constitution</strong> — {{.Mesures}} mesures depuis
+    {{stamp .Depuis}}. Un relevé toutes les quinze minutes ; la frise se remplira
+    d'elle-même. Les zones vides signifient <em>pas encore de mesure</em>, pas une panne.
   </div>
 </div>
+{{end}}
 
 <div class="card">
-  <div class="card-h"><h2>Détail par hôte</h2></div>
+  <div class="card-h"><h2>Épisodes</h2><span class="sp"></span>
+    <span class="muted">quand · combien de temps · pourquoi</span></div>
+  {{if .Episodes}}
   <div class="tw"><table>
-    <thead><tr><th>Hôte</th><th style="text-align:right">Heures saines</th>
-      <th style="text-align:right">À surveiller</th><th style="text-align:right">Critiques</th>
-      <th style="text-align:right">Sans donnée</th><th style="text-align:right">Couverture</th></tr></thead>
+    <thead><tr><th>Hôte</th><th>Début</th><th>Durée</th><th>Niveau</th><th>Cause</th></tr></thead>
     <tbody>
-    {{range .Rows}}
+    {{range .Episodes}}
       <tr>
-        <td class="host"><a href="/host/{{.Name}}" style="color:inherit">{{.Name}}</a></td>
-        <td class="n">{{.OKh}}</td>
-        <td class="n">{{if .WarnH}}{{.WarnH}}{{else}}—{{end}}</td>
-        <td class="n">{{if .CritH}}{{.CritH}}{{else}}—{{end}}</td>
-        <td class="n muted">{{if .GapH}}{{.GapH}}{{else}}—{{end}}</td>
-        <td class="n">{{pct (add .OKh (add .WarnH .CritH)) (len .Cells)}} %</td>
+        <td class="host"><a href="/host/{{.Host}}" style="color:inherit">{{.Host}}</a></td>
+        <td class="num">{{stamp .Start}}</td>
+        <td class="n">{{age .Duration}}{{if .Ongoing}} <span class="pill p-crit" style="margin-left:4px">en cours</span>{{end}}</td>
+        <td><span class="outcome {{if eq .State "crit"}}o-crit{{else}}o-warn{{end}}">
+          {{if eq .State "crit"}}critique{{else}}à surveiller{{end}}</span></td>
+        <td class="muted" style="white-space:normal">{{if .Cause}}{{.Cause}}{{else}}—{{end}}</td>
       </tr>
     {{end}}
     </tbody>
   </table></div>
-  <div class="card-b"><p class="note" style="margin:0">La couverture dit la part des heures
-  <strong>observées</strong>. Un trou n'est pas une panne : la console a pu être arrêtée, ou l'hôte
-  raccordé récemment. Confondre les deux ferait passer une absence de mesure pour une absence de
-  service.</p></div>
+  {{else}}
+  <div class="card-b"><div class="ok-line">
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.4l3.2 3.2L13 5"/></svg>
+    Aucun épisode sur {{.Window.Label}} — tous les hôtes sont restés sains.
+  </div></div>
+  {{end}}
 </div>
+
+<div class="card">
+  <div class="card-h"><h2>Frise</h2><span class="sp"></span>
+    <span class="legend">
+      <span class="lg"><i class="c c-ok"></i>sain</span>
+      <span class="lg"><i class="c c-warn"></i>à surveiller</span>
+      <span class="lg"><i class="c c-crit"></i>critique</span>
+      <span class="lg"><i class="c c-unknown"></i>pas de mesure</span>
+    </span>
+  </div>
+  <div class="card-b">
+    <div class="tl-scroll"><div class="tl" style="--n:{{.Buckets}}">
+      <div class="tl-axis">
+        {{range .Axis}}<span class="tl-tick" style="grid-column:{{add .Index 1}}">{{.Label}}</span>{{end}}
+      </div>
+      {{range .Rows}}
+      <div class="tl-name mono" title="{{.Name}}">{{.Name}}</div>
+      <div class="tl-cells">
+        {{range .Cells}}<i class="c c-{{.State}}" title="{{.Title}}"></i>{{end}}
+      </div>
+      <div class="tl-sum">
+        {{if .Crits}}<span class="pill p-crit">{{.Crits}}</span>{{end}}
+        {{if .Warns}}<span class="pill p-warn">{{.Warns}}</span>{{end}}
+        {{if and (not .Crits) (not .Warns)}}<span class="pill p-ok">sain</span>{{end}}
+        <span class="muted" style="font-size:11px">{{.Coverage}} %</span>
+      </div>
+      {{end}}
+    </div></div>
+    <p class="note">Une case par {{if eq .Window.Key "24h"}}heure{{else if eq .Window.Key "7j"}}quatre heures{{else}}six heures{{end}},
+    du plus ancien à gauche. Chaque case porte le <strong>pire état observé</strong> sur l'intervalle :
+    une panne de dix minutes ne doit pas disparaître derrière trois relevés sains. Le pourcentage à
+    droite est la <strong>couverture</strong> — la part des intervalles réellement mesurés, à ne pas
+    confondre avec la disponibilité.</p>
+  </div>
+</div>
+{{end}}
 </div></main></div></body></html>

@@ -592,15 +592,14 @@ func (s *Server) getSante(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getHistorique(w http.ResponseWriter, r *http.Request) {
-	rows, hours, days, err := s.col.Timeline(14)
+	td, err := s.col.Timeline(r.URL.Query().Get("w"))
 	if err != nil {
 		http.Error(w, "erreur interne", http.StatusInternalServerError)
 		return
 	}
 	d := s.page("historique", r, w)
-	d["Rows"] = rows
-	d["Hours"] = hours
-	d["Days"] = days
+	d["T"] = td
+	d["Windows"] = collector.Windows
 	s.render(w, "historique.html", d)
 }
 

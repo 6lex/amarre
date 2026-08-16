@@ -137,11 +137,14 @@ details.host-card > summary .chev{font-size:10px;color:var(--ink-3);transition:t
 details.host-card[open] > summary .chev{transform:rotate(90deg)}
 
 /* ── Frise d'état ──────────────────────────────────────────────────────
-   Palette validée en OKLab : ΔE minimal 18,3 entre états, contraste ≥ 3:1
-   sur les deux fonds. La séparation passe aussi par la LUMINOSITÉ —
-   critique très sombre, avertissement clair — donc l'information survit à
-   un daltonisme sans dépendre de la teinte. */
-.c{display:inline-block;width:100%;height:14px;border-radius:2px}
+   Palette validée en OKLab : ΔE minimal 18,3 entre états, contraste ≥ 3:1 sur
+   les deux fonds. La séparation passe aussi par la LUMINOSITÉ — critique très
+   sombre, avertissement clair — donc lisible en cas de daltonisme.
+
+   Le nombre de cases s'adapte à la fenêtre pour qu'une case reste VISIBLE :
+   336 cases sur 700 pixels donnaient 2 pixels chacune, où l'on ne distinguait
+   rien. On perd en finesse sur les longues fenêtres, on gagne de pouvoir lire. */
+.c{display:block;width:100%;height:20px;border-radius:3px}
 .c-ok{background:#2C7A4B}
 .c-warn{background:#C08A00}
 .c-crit{background:#8F1A10}
@@ -152,19 +155,27 @@ details.host-card[open] > summary .chev{transform:rotate(90deg)}
   .c-crit{background:#D4574A}
 }
 .tl-scroll{overflow-x:auto}
-.tl{display:grid;grid-template-columns:auto 1fr auto;gap:6px 12px;align-items:center;min-width:640px}
-.tl-axis{grid-column:2;display:grid;grid-template-columns:repeat(336,1fr);
-font-size:9.5px;color:var(--ink-3);font-family:var(--mono);height:14px;position:relative}
-.tl-day{grid-row:1;white-space:nowrap;border-left:1px solid var(--border);padding-left:3px}
-.tl-name{font-size:11.5px;text-align:right;max-width:200px;overflow:hidden;
+.tl{display:grid;grid-template-columns:auto 1fr auto;gap:7px 14px;align-items:center;min-width:520px}
+.tl-axis{grid-column:2;display:grid;grid-template-columns:repeat(var(--n),1fr);
+font-size:10px;color:var(--ink-3);font-family:var(--mono);height:15px}
+.tl-tick{grid-row:1;white-space:nowrap;border-left:1px solid var(--border);padding-left:4px}
+.tl-name{font-size:12px;text-align:right;max-width:220px;overflow:hidden;
 text-overflow:ellipsis;white-space:nowrap}
-/* Chaque case a son propre écart : sans lui, deux heures voisines de même
-   état se fondent en un bloc dont on ne lit plus la granularité. */
-.tl-cells{display:grid;grid-template-columns:repeat(336,1fr);gap:1px}
-.tl-sum{display:flex;gap:4px;white-space:nowrap}
+/* Un écart entre les cases : sans lui, deux intervalles voisins de même état
+   se fondent en un bloc dont on ne lit plus la granularité. */
+.tl-cells{display:grid;grid-template-columns:repeat(var(--n),1fr);gap:2px}
+.tl-cells .c:hover{outline:2px solid var(--ink);outline-offset:1px}
+.tl-sum{display:flex;gap:5px;align-items:center;white-space:nowrap}
 .legend{display:flex;gap:12px;flex-wrap:wrap}
 .lg{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--ink-2)}
-.lg .c{width:11px;height:11px;flex:none}
+.lg .c{width:12px;height:12px;flex:none;display:inline-block}
+/* Sélecteur de fenêtre */
+.wsel{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.wsel a{padding:5px 12px;font-size:12.5px;color:var(--ink-2);text-decoration:none;
+border-right:1px solid var(--border)}
+.wsel a:last-child{border-right:none}
+.wsel a:hover{background:var(--surface-2);text-decoration:none}
+.wsel a.on{background:var(--accent);color:#fff;font-weight:600}
 /* Message long : la pastille reste courte et lisible, le texte complet se
    déplie sur une ligne entière en dessous. Élément <details> natif — aucun
    script, donc compatible avec la politique de sécurité de la console. */
