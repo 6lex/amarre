@@ -39,6 +39,11 @@ type TLSConfig struct {
 // Storage Box.
 type HostConfig struct {
 	Name     string        `yaml:"name"`
+	// HTTPCheck est l'adresse d'une page du site à interroger pour établir sa
+	// disponibilité RÉELLE, vue de l'extérieur. Un service peut tourner sans
+	// que le site réponde ; seule une requête sur une vraie page le dit.
+	HTTPCheck string `yaml:"http_check"`
+	HTTPExpect int   `yaml:"http_expect"`
 	Addr     string        `yaml:"addr"`
 	User     string        `yaml:"user"`
 	Port     int           `yaml:"port"`

@@ -1,0 +1,74 @@
+<!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="app">
+{{template "rail" .}}
+<main><div class="wrap">
+<header><h1>Santé</h1>
+  <span class="pill {{if .Crit}}p-crit{{else if .Warn}}p-warn{{else}}p-ok{{end}}">
+    {{if .Crit}}{{.Crit}} critique{{if gt .Crit 1}}s{{end}}{{else if .Warn}}{{.Warn}} à surveiller{{else}}rien à signaler{{end}}</span>
+  <span class="sp"></span>
+  <span class="muted">peu d'indicateurs, mais ceux qui décident si un hôte reste sauvegardable</span>
+</header>
+
+{{range .Hosts}}
+<div class="card">
+  <div class="card-h">
+    <h2 class="mono" style="font-weight:500"><a href="/host/{{.Name}}" style="color:inherit">{{.Name}}</a></h2>
+    <span class="sp"></span>
+    {{if .Probe}}<span class="pill {{if .Probe.Up}}p-ok{{else}}p-crit{{end}}">
+      site {{if .Probe.Up}}en ligne{{else}}injoignable{{end}}</span>{{end}}
+    {{if .Alertes}}<span class="pill p-crit">{{len .Alertes}}</span>{{else}}<span class="pill p-ok">sain</span>{{end}}
+  </div>
+  <div class="card-b">
+    {{if .Alertes}}
+      {{range .Alertes}}
+      <div class="al">
+        <span class="lv lv-{{.Niveau}}"></span>
+        <span class="txt"><span class="s">{{.Sujet}}</span><span class="d">{{.Detail}}</span></span>
+      </div>
+      {{end}}
+    {{else}}
+      <div class="ok-line">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.4l3.2 3.2L13 5"/></svg>
+        Sauvegardé, vérifié, joignable — rien à signaler.
+      </div>
+    {{end}}
+
+    {{with .Health}}
+    <div class="metrics">
+      <div class="m"><div class="v">{{age .Uptime}}</div><div class="k">Uptime</div></div>
+      <div class="m {{if gt (index .Load 1) 1.0}}warn{{end}}"><div class="v">{{printf "%.2f" (index .Load 1)}}</div><div class="k">Charge / cœur</div></div>
+      <div class="m"><div class="v">{{bytes .MemAvailable}}</div><div class="k">Mémoire libre</div></div>
+      {{range .Filesystems}}
+      <div class="m {{if ge .Pct 92}}bad{{else if ge .Pct 85}}warn{{end}}">
+        <div class="v">{{.Pct}} %</div><div class="k">{{.Mount}} — {{bytes .Avail}} libres</div></div>
+      {{end}}
+      {{with .BackupStatus}}
+        {{if .CheckAt}}<div class="m {{if not .CheckOK}}bad{{end}}">
+          <div class="v">{{if .CheckOK}}OK{{else}}KO{{end}}</div>
+          <div class="k">Intégrité · {{.CheckDur}} s</div></div>{{end}}
+        {{if .DeepAt}}<div class="m {{if not .DeepOK}}bad{{end}}">
+          <div class="v">{{if .DeepOK}}OK{{else}}KO{{end}}</div>
+          <div class="k">Relecture {{.DeepSubset}}</div></div>{{end}}
+      {{end}}
+      {{if .Updates.Total}}<div class="m {{if .Updates.Security}}warn{{end}}">
+        <div class="v">{{.Updates.Total}}</div><div class="k">Maj · {{.Updates.Security}} sécu</div></div>{{end}}
+    </div>
+    {{end}}
+
+    {{with .Probe}}
+    <p class="note" style="margin-top:11px">
+      Sonde sur <span class="mono">{{.URL}}</span> — {{if .Up}}code {{.Status}} en {{.Latency.Milliseconds}} ms{{else}}échec après {{.Attempts}} tentatives espacées de 8 s{{end}}.
+      {{if not .CertExpiry.IsZero}}Certificat jusqu'au {{.CertExpiry.Format "02/01/2006"}}.{{end}}
+      Interrogée depuis la console, pas depuis l'hôte : un serveur qui se teste lui-même ne prouve pas qu'il est joignable.
+    </p>
+    {{end}}
+  </div>
+</div>
+{{else}}
+<p class="note">Aucun hôte supervisé.</p>
+{{end}}
+
+<p class="note">Volontairement peu d'indicateurs. Pas de pourcentage CPU instantané — une mesure d'une
+seconde ne dit rien d'une charge. Pas de « mémoire utilisée » — sous Linux le cache de pages remplit
+la mémoire par conception, le chiffre affole sans rien signifier. Une page couverte de jauges ne se
+lit plus, et c'est ainsi qu'une panne réelle passe inaperçue au milieu de trente voyants verts.</p>
+</div></main></div></body></html>

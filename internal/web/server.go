@@ -73,6 +73,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET  /host/{name}/tree", s.requireAuth(s.getTreeFragment))
 	s.mux.Handle("GET /static/", http.StripPrefix("/", http.FileServerFS(staticFS)))
 	s.mux.HandleFunc("GET  /alerts", s.requireAuth(s.getAlerts))
+	s.mux.HandleFunc("GET  /sante", s.requireAuth(s.getSante))
 	// L'explorateur a rejoint la fiche d'hôte : tout ce qui concerne un
 	// serveur se lit au même endroit. La route est conservée pour ne pas
 	// casser un signet.
@@ -548,6 +549,29 @@ func (s *Server) getExplorer(w http.ResponseWriter, r *http.Request) {
 	ip, _ := remoteAddr(r)
 	s.st.Audit(u.Username, ip.String(), "navigation", host+":"+path, "succès")
 	s.render(w, "explorer.html", data)
+}
+
+func (s *Server) getSante(w http.ResponseWriter, r *http.Request) {
+	hosts, err := s.col.SanteFleet()
+	if err != nil {
+		http.Error(w, "erreur interne", http.StatusInternalServerError)
+		return
+	}
+	var crit, warn int
+	for _, h := range hosts {
+		for _, a := range h.Alertes {
+			if a.Niveau == "crit" {
+				crit++
+			} else {
+				warn++
+			}
+		}
+	}
+	d := s.page("sante", r, w)
+	d["Hosts"] = hosts
+	d["Crit"] = crit
+	d["Warn"] = warn
+	s.render(w, "sante.html", d)
 }
 
 func (s *Server) getAudit(w http.ResponseWriter, r *http.Request) {

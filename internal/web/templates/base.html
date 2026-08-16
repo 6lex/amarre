@@ -96,6 +96,22 @@ padding:3px 9px;border-radius:20px;font-weight:600;cursor:default}
 .o-mute{background:var(--surface-2);color:var(--ink-3);font-weight:600}
 .o-crit{background:var(--crit-s);color:var(--crit)}
 .o-warn{background:var(--warn-s);color:var(--warn)}
+/* Santé : une ligne par constat, pas une jauge par métrique. */
+.al{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--grid);align-items:flex-start}
+.al:last-child{border:none}
+.al .lv{flex:none;width:14px;height:14px;border-radius:4px;margin-top:2px}
+.lv-crit{background:var(--crit)}
+.lv-warn{background:var(--warn)}
+.al .txt{flex:1;min-width:0}
+.al .s{font-size:13px;font-weight:600}
+.al .d{font-size:12px;color:var(--ink-3);margin-top:2px;word-break:break-word}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin-top:12px}
+.m{background:var(--surface-2);border-radius:8px;padding:9px 11px}
+.m .v{font-family:var(--mono);font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.m .k{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin-top:3px}
+.m.bad .v{color:var(--crit)}
+.m.warn .v{color:var(--warn)}
+.ok-line{display:flex;align-items:center;gap:8px;color:var(--ok);font-size:13px;font-weight:600}
 /* Message long : la pastille reste courte et lisible, le texte complet se
    déplie sur une ligne entière en dessous. Élément <details> natif — aucun
    script, donc compatible avec la politique de sécurité de la console. */
@@ -188,6 +204,12 @@ padding:9px 11px;font-size:12.5px;margin-top:14px}
       <rect x="1.8" y="2.4" width="12.4" height="4" rx="1.2"/>
       <rect x="1.8" y="9.6" width="12.4" height="4" rx="1.2"/></svg>
     Parc{{if .NAlerts}}<span class="cnt">{{.NAlerts}}</span>{{end}}</a>
+
+  <a class="navbtn {{if eq .Page "sante"}}on{{end}}" href="/sante">
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M1.6 8h3l1.6-4 2.4 8 1.6-4h4"/></svg>
+    Santé</a>
 
   <a class="navbtn {{if eq .Page "alertes"}}on{{end}}" href="/alerts">
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor"

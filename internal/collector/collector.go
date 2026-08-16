@@ -195,6 +195,21 @@ func (c *Collector) collectOne(ctx context.Context, h config.HostConfig) {
 		if exc, serr := c.fl.Excludes(ctx, h.Addr, h.User, h.Port); serr == nil {
 			c.saveMeta(h.Name, "excludes", exc)
 		}
+		if hl, serr := c.fl.FetchHealth(ctx, h.Addr, h.User, h.Port); serr == nil {
+			c.saveMeta(h.Name, "health", hl)
+		} else {
+			c.log.Warn("relevé de santé indisponible", "hôte", h.Name, "erreur", serr)
+		}
+	}
+
+	// La sonde HTTP est menée MÊME si l'hôte est injoignable en SSH : un
+	// serveur qui refuse SSH peut parfaitement continuer à servir son site,
+	// et l'inverse est vrai aussi. Ce sont deux disponibilités distinctes.
+	if pr := c.probeHTTP(ctx, h); pr != nil {
+		c.saveMeta(h.Name, "probe", pr)
+	}
+
+	{
 	}
 	c.cache.invalidate(h.Name)
 	if err := c.st.RecordCheck(chk); err != nil {
@@ -305,6 +320,8 @@ type Detail struct {
 	Stats     *fleet.RepoStats
 	Policy    []fleet.PolicyEntry
 	Excludes  []string
+	Health    *fleet.Health
+	Probe     *Probe
 	History   []store.Check
 	Err       string
 
@@ -350,6 +367,14 @@ func (c *Collector) HostDetail(ctx context.Context, name string) (*Detail, error
 	}
 	_ = c.loadMeta(name, "policy", &d.Policy)
 	_ = c.loadMeta(name, "excludes", &d.Excludes)
+	var hl fleet.Health
+	if err := c.loadMeta(name, "health", &hl); err == nil {
+		d.Health = &hl
+	}
+	var pr Probe
+	if err := c.loadMeta(name, "probe", &pr); err == nil && pr.URL != "" {
+		d.Probe = &pr
+	}
 	if _, at, err := c.st.GetMeta(name, "snapshots"); err == nil {
 		d.MetaAt = at
 	}
