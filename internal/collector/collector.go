@@ -173,6 +173,11 @@ func (c *Collector) collectOne(ctx context.Context, h config.HostConfig) {
 		if rs, serr := c.fl.Stats(ctx, h.Addr, h.User, h.Port); serr == nil {
 			chk.RepoSize = rs.TotalSize
 			chk.RepoRaw = rs.UncompressedSize
+			// restic < 0.17 ne joint pas de résumé aux snapshots : la taille
+			// de la source vient alors du mode restore-size.
+			if chk.SizeBytes == 0 && rs.SourceSize > 0 {
+				chk.SizeBytes = rs.SourceSize
+			}
 		}
 	}
 	c.cache.invalidate(h.Name)

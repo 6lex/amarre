@@ -256,13 +256,27 @@ func (c *Client) Snapshots(ctx context.Context, addr, user string, port int) ([]
 	return res, nil
 }
 
-// RepoStats reflète « restic stats --mode raw-data --json ».
+// RepoStats reflète les statistiques d'un dépôt.
 type RepoStats struct {
 	TotalSize        int64   `json:"total_size"`
 	UncompressedSize int64   `json:"total_uncompressed_size"`
 	CompressionRatio float64 `json:"compression_ratio"`
 	SnapshotsCount   int     `json:"snapshots_count"`
 	BlobCount        int     `json:"total_blob_count"`
+
+	// SourceSize est le volume nécessaire pour restaurer le dernier
+	// snapshot — la taille de ce qui est sauvegardé. Lue séparément parce
+	// que le résumé des snapshots n'existe qu'à partir de restic 0.17.
+	SourceSize int64 `json:"-"`
+}
+
+// statsEnvelope est ce que rend le shim : deux modes en un appel.
+type statsEnvelope struct {
+	Raw     *RepoStats `json:"raw"`
+	Restore *struct {
+		TotalSize  int64 `json:"total_size"`
+		FileCount  int64 `json:"total_file_count"`
+	} `json:"restore"`
 }
 
 // Stats rend l'occupation réelle du dépôt, après compression et déduplication.
@@ -271,9 +285,21 @@ func (c *Client) Stats(ctx context.Context, addr, user string, port int) (*RepoS
 	if err != nil {
 		return nil, err
 	}
-	var st RepoStats
-	if err := json.Unmarshal(out, &st); err != nil {
-		return nil, fmt.Errorf("statistiques illisibles : %w", err)
+	var env statsEnvelope
+	if err := json.Unmarshal(out, &env); err != nil {
+		// Repli sur l'ancien format, à un seul mode.
+		var st RepoStats
+		if e2 := json.Unmarshal(out, &st); e2 != nil {
+			return nil, fmt.Errorf("statistiques illisibles : %w", err)
+		}
+		return &st, nil
+	}
+	if env.Raw == nil {
+		return nil, fmt.Errorf("statistiques du dépôt absentes")
+	}
+	st := *env.Raw
+	if env.Restore != nil {
+		st.SourceSize = env.Restore.TotalSize
 	}
 	return &st, nil
 }
