@@ -112,8 +112,11 @@ padding:3px 9px;border-radius:20px;font-weight:600;cursor:default}
 .lv-crit{background:var(--crit)}
 .lv-warn{background:var(--warn)}
 .al .txt{flex:1;min-width:0}
-.al .s{font-size:13px;font-weight:600}
-.al .d{font-size:12px;color:var(--ink-3);margin-top:2px;word-break:break-word}
+/* Sujet et détail sont des <span> : sans display:block ils se collent bout à
+   bout sur la même ligne. Le détail doit tomber en dessous. */
+.al .s{display:block;font-size:13px;font-weight:600;line-height:1.35}
+.al .d{display:block;font-size:12px;color:var(--ink-3);margin-top:3px;
+line-height:1.45;word-break:break-word}
 .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin-top:12px}
 .m{background:var(--surface-2);border-radius:8px;padding:9px 11px}
 .m .v{font-family:var(--mono);font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
