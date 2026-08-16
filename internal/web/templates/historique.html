@@ -1,0 +1,69 @@
+<!doctype html><html lang="fr"><head>{{template "head"}}</head><body><div class="app">
+{{template "rail" .}}
+<main><div class="wrap">
+<header><h1>Historique</h1>
+  <span class="muted">état heure par heure sur 14 jours</span>
+  <span class="sp"></span>
+  <a href="/sante" class="muted">retour à Santé</a>
+</header>
+
+<div class="card">
+  <div class="card-h"><h2>Frise d'état</h2><span class="sp"></span>
+    <span class="legend">
+      <span class="lg"><i class="c c-ok"></i>tout va bien</span>
+      <span class="lg"><i class="c c-warn"></i>à surveiller</span>
+      <span class="lg"><i class="c c-crit"></i>critique</span>
+      <span class="lg"><i class="c c-unknown"></i>aucune donnée</span>
+    </span>
+  </div>
+  <div class="card-b">
+    <div class="tl-scroll">
+      <div class="tl">
+        <div class="tl-axis">
+          {{range .Days}}<span class="tl-day" style="grid-column:{{add .Index 1}}">{{.Label}}</span>{{end}}
+        </div>
+        {{range .Rows}}
+        <div class="tl-name mono" title="{{.Name}}">{{.Name}}</div>
+        <div class="tl-cells">
+          {{range .Cells}}<i class="c c-{{.State}}" title="{{.Title}}"></i>{{end}}
+        </div>
+        <div class="tl-sum">
+          {{if .CritH}}<span class="pill p-crit">{{.CritH}} h</span>{{end}}
+          {{if .WarnH}}<span class="pill p-warn">{{.WarnH}} h</span>{{end}}
+          {{if and (not .CritH) (not .WarnH)}}<span class="pill p-ok">sain</span>{{end}}
+        </div>
+        {{end}}
+      </div>
+    </div>
+    <p class="note">Une case par heure, du plus ancien à gauche. Chaque heure porte le
+    <strong>pire état observé</strong> : une panne de dix minutes ne doit pas disparaître parce que
+    les trois autres relevés de l'heure étaient bons. Survoler une case en donne le détail — l'état
+    ne tient jamais à la seule couleur.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-h"><h2>Détail par hôte</h2></div>
+  <div class="tw"><table>
+    <thead><tr><th>Hôte</th><th style="text-align:right">Heures saines</th>
+      <th style="text-align:right">À surveiller</th><th style="text-align:right">Critiques</th>
+      <th style="text-align:right">Sans donnée</th><th style="text-align:right">Couverture</th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+      <tr>
+        <td class="host"><a href="/host/{{.Name}}" style="color:inherit">{{.Name}}</a></td>
+        <td class="n">{{.OKh}}</td>
+        <td class="n">{{if .WarnH}}{{.WarnH}}{{else}}—{{end}}</td>
+        <td class="n">{{if .CritH}}{{.CritH}}{{else}}—{{end}}</td>
+        <td class="n muted">{{if .GapH}}{{.GapH}}{{else}}—{{end}}</td>
+        <td class="n">{{pct (add .OKh (add .WarnH .CritH)) (len .Cells)}} %</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  <div class="card-b"><p class="note" style="margin:0">La couverture dit la part des heures
+  <strong>observées</strong>. Un trou n'est pas une panne : la console a pu être arrêtée, ou l'hôte
+  raccordé récemment. Confondre les deux ferait passer une absence de mesure pour une absence de
+  service.</p></div>
+</div>
+</div></main></div></body></html>

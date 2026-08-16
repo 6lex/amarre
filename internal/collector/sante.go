@@ -1,6 +1,8 @@
 package collector
 
 import (
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/6lex/amarre/internal/fleet"
@@ -14,6 +16,8 @@ import (
 // qu'une panne réelle passe inaperçue au milieu de trente indicateurs verts.
 type Sante struct {
 	Name   string
+	Crit   int
+	Warn   int
 	Health *fleet.Health
 	Probe  *Probe
 	View   HostView
@@ -55,18 +59,21 @@ func (s *Sante) Evaluate(expect time.Duration) {
 		// abîmé : l'annoncer comme une corruption déclencherait une panique
 		// inutile, et à force la prochaine vraie alerte ne serait plus crue.
 		if bs.CheckAt > 0 && !bs.CheckOK {
-			switch bs.CheckKind {
+			switch checkKind(bs.CheckKind, bs.CheckError) {
 			case "verrou":
 				add("warn", "Vérification impossible : dépôt verrouillé",
 					"Un verrou orphelin bloque le contrôle. Le bouton « Déverrouiller » le retire ; rien n'indique une corruption.")
 			case "absent":
 				add("crit", "Dépôt introuvable au moment du contrôle", bs.CheckError)
+			case "indetermine":
+				add("warn", "Vérification structurelle en échec",
+					"Cause non déterminée : "+bs.CheckError)
 			default:
 				add("crit", "Intégrité structurelle en échec", bs.CheckError)
 			}
 		}
 		if bs.DeepAt > 0 && !bs.DeepOK {
-			switch bs.DeepKind {
+			switch checkKind(bs.DeepKind, bs.DeepError) {
 			case "verrou":
 				add("warn", "Relecture impossible : dépôt verrouillé",
 					"La vérification approfondie n'a pas pu démarrer. Ce n'est pas un signe de corruption.")
@@ -74,6 +81,9 @@ func (s *Sante) Evaluate(expect time.Duration) {
 				add("crit", "Dépôt introuvable à la relecture", bs.DeepError)
 			case "motdepasse":
 				add("crit", "Mot de passe de dépôt refusé", "Le dépôt existe mais ne s'ouvre pas.")
+			case "indetermine":
+				add("warn", "Relecture en échec",
+					"Cause non déterminée, relevé antérieur au diagnostic détaillé : "+bs.DeepError)
 			default:
 				add("crit", "Corruption détectée à la relecture", bs.DeepError)
 			}
@@ -153,6 +163,9 @@ func (s *Sante) Evaluate(expect time.Duration) {
 	if h != nil && h.LocalProbe != nil && h.LocalProbe.URL != "" {
 		lp := h.LocalProbe
 		if !lp.Up {
+			// Le site est filtré par IP : « injoignable » serait faux, il est
+			// joignable pour qui a le droit. Ce qu'on constate ici, c'est que
+			// l'application elle-même ne répond plus.
 			add("crit", "Application sans réponse",
 				lp.URL+" — "+lp.Err+" (sondé depuis l'hôte, après "+itoa(lp.Attempts)+" tentatives)")
 		}
@@ -172,6 +185,29 @@ func (s *Sante) Evaluate(expect time.Duration) {
 					"Le "+p.CertExpiry.Format("02/01/2006")+" — le renouvellement automatique a-t-il échoué ?")
 			}
 		}
+	}
+}
+
+// checkKind déduit la cause d'un échec quand elle n'est pas renseignée.
+//
+// Un état écrit avant que la distinction n'existe ne porte pas de « kind ».
+// Retomber sur « corruption » par défaut serait le pire choix : c'est
+// l'hypothèse la plus grave, annoncée sans preuve. On lit le message, et à
+// défaut on reste évasif plutôt qu'alarmiste.
+func checkKind(kind, msg string) string {
+	if kind != "" {
+		return kind
+	}
+	m := strings.ToLower(msg)
+	switch {
+	case strings.Contains(m, "lock") || strings.Contains(m, "verrou"):
+		return "verrou"
+	case strings.Contains(m, "does not exist") || strings.Contains(m, "unable to open repository"):
+		return "absent"
+	case strings.Contains(m, "wrong password") || strings.Contains(m, "mot de passe"):
+		return "motdepasse"
+	default:
+		return "indetermine"
 	}
 }
 
@@ -226,7 +262,54 @@ func (c *Collector) SanteFleet() ([]Sante, error) {
 			s.Probe = &p
 		}
 		s.Evaluate(v.Expect)
+		for _, a := range s.Alertes {
+			if a.Niveau == "crit" {
+				s.Crit++
+			} else {
+				s.Warn++
+			}
+		}
 		out = append(out, s)
 	}
+
+	// Le plus grave en premier. Une page de supervision se lit du haut : ce
+	// qui exige une action doit s'y trouver, pas au milieu d'une liste
+	// alphabétique où l'ordre ne veut rien dire.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Crit != out[j].Crit {
+			return out[i].Crit > out[j].Crit
+		}
+		if out[i].Warn != out[j].Warn {
+			return out[i].Warn > out[j].Warn
+		}
+		return out[i].Name < out[j].Name
+	})
 	return out, nil
+}
+
+// State rend l'état global d'un hôte.
+func (s *Sante) State() string {
+	switch {
+	case s.Crit > 0:
+		return "crit"
+	case s.Warn > 0:
+		return "warn"
+	default:
+		return "ok"
+	}
+}
+
+// Summary résume en une phrase ce qui ne va pas, pour l'historique.
+func (s *Sante) Summary() string {
+	if len(s.Alertes) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, a := range s.Alertes {
+		parts = append(parts, a.Sujet)
+	}
+	if len(parts) > 3 {
+		parts = parts[:3]
+	}
+	return strings.Join(parts, " · ")
 }

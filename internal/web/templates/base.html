@@ -124,6 +124,44 @@ line-height:1.45;word-break:break-word}
 .m.bad .v{color:var(--crit)}
 .m.warn .v{color:var(--warn)}
 .ok-line{display:flex;align-items:center;gap:8px;color:var(--ok);font-size:13px;font-weight:600}
+/* Hôtes repliés par défaut : une page de supervision doit tenir sur un écran.
+   Ceux qui portent un constat critique s'ouvrent d'office — on ne devrait
+   jamais avoir à cliquer pour découvrir qu'il y a un problème. */
+details.host-card > summary{cursor:pointer;list-style:none}
+details.host-card > summary::-webkit-details-marker{display:none}
+details.host-card > summary:hover{background:var(--surface-2)}
+details.host-card > summary .chev{font-size:10px;color:var(--ink-3);transition:transform .12s;margin-left:4px}
+details.host-card[open] > summary .chev{transform:rotate(90deg)}
+
+/* ── Frise d'état ──────────────────────────────────────────────────────
+   Palette validée en OKLab : ΔE minimal 18,3 entre états, contraste ≥ 3:1
+   sur les deux fonds. La séparation passe aussi par la LUMINOSITÉ —
+   critique très sombre, avertissement clair — donc l'information survit à
+   un daltonisme sans dépendre de la teinte. */
+.c{display:inline-block;width:100%;height:14px;border-radius:2px}
+.c-ok{background:#2C7A4B}
+.c-warn{background:#C08A00}
+.c-crit{background:#8F1A10}
+.c-unknown{background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--border)}
+@media(prefers-color-scheme:dark){
+  .c-ok{background:#46A96F}
+  .c-warn{background:#D9A21A}
+  .c-crit{background:#D4574A}
+}
+.tl-scroll{overflow-x:auto}
+.tl{display:grid;grid-template-columns:auto 1fr auto;gap:6px 12px;align-items:center;min-width:640px}
+.tl-axis{grid-column:2;display:grid;grid-template-columns:repeat(336,1fr);
+font-size:9.5px;color:var(--ink-3);font-family:var(--mono);height:14px;position:relative}
+.tl-day{grid-row:1;white-space:nowrap;border-left:1px solid var(--border);padding-left:3px}
+.tl-name{font-size:11.5px;text-align:right;max-width:200px;overflow:hidden;
+text-overflow:ellipsis;white-space:nowrap}
+/* Chaque case a son propre écart : sans lui, deux heures voisines de même
+   état se fondent en un bloc dont on ne lit plus la granularité. */
+.tl-cells{display:grid;grid-template-columns:repeat(336,1fr);gap:1px}
+.tl-sum{display:flex;gap:4px;white-space:nowrap}
+.legend{display:flex;gap:12px;flex-wrap:wrap}
+.lg{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--ink-2)}
+.lg .c{width:11px;height:11px;flex:none}
 /* Message long : la pastille reste courte et lisible, le texte complet se
    déplie sur une ligne entière en dessous. Élément <details> natif — aucun
    script, donc compatible avec la politique de sécurité de la console. */
@@ -225,6 +263,13 @@ padding:9px 11px;font-size:12.5px;margin-top:14px}
     {{if .SanteCrit}}<span class="dot d-crit" title="{{.SanteCrit}} constat{{if gt .SanteCrit 1}}s{{end}} critique{{if gt .SanteCrit 1}}s{{end}}">{{.SanteCrit}}</span>
     {{else if .SanteWarn}}<span class="dot d-warn" title="{{.SanteWarn}} point{{if gt .SanteWarn 1}}s{{end}} à surveiller">{{.SanteWarn}}</span>
     {{else}}<span class="dot d-ok" title="Rien à signaler"></span>{{end}}</a>
+
+  <a class="navbtn {{if eq .Page "historique"}}on{{end}}" href="/historique">
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+      <rect x="1.8" y="3.4" width="2.6" height="9.2" rx="1"/>
+      <rect x="6.7" y="5.4" width="2.6" height="7.2" rx="1"/>
+      <rect x="11.6" y="7.4" width="2.6" height="5.2" rx="1"/></svg>
+    Historique</a>
 
   <a class="navbtn {{if eq .Page "alertes"}}on{{end}}" href="/alerts">
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor"

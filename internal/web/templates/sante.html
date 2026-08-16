@@ -5,22 +5,26 @@
   <span class="pill {{if .Crit}}p-crit{{else if .Warn}}p-warn{{else}}p-ok{{end}}">
     {{if .Crit}}{{.Crit}} critique{{if gt .Crit 1}}s{{end}}{{else if .Warn}}{{.Warn}} à surveiller{{else}}rien à signaler{{end}}</span>
   <span class="sp"></span>
-  <span class="muted">peu d'indicateurs, mais ceux qui décident si un hôte reste sauvegardable</span>
+  <a href="/historique" class="muted">frise sur 14 jours</a>
+  <span class="muted">· le plus grave en premier ; cliquer un hôte pour le détail</span>
 </header>
 
 {{range .Hosts}}
-<div class="card">
-  <div class="card-h">
+<details class="card host-card" {{if .Crit}}open{{end}}>
+  <summary class="card-h">
     <h2 class="mono" style="font-weight:500"><a href="/host/{{.Name}}" style="color:inherit">{{.Name}}</a></h2>
     <span class="sp"></span>
     {{if .Probe}}<span class="pill {{if .Probe.Up}}p-ok{{else}}p-crit{{end}}">
       site {{if .Probe.Up}}en ligne{{else}}injoignable{{end}}</span>
     {{else if and .Health .Health.LocalProbe}}{{with .Health.LocalProbe}}{{if .URL}}
-    <span class="pill {{if .Up}}p-ok{{else}}p-crit{{end}}" title="Sondé depuis l'hôte : prouve que l'application répond, pas qu'elle est joignable du dehors.">
-      application {{if .Up}}répond{{else}}sans réponse{{end}} · local</span>
+    <span class="pill {{if .Up}}p-ok{{else}}p-crit{{end}}" title="Site filtré par IP. Sondé depuis l'hôte : prouve que l'application répond aux adresses autorisées, pas qu'elle est ouverte au public.">
+      {{if .Up}}joignable · IP filtrées{{else}}application sans réponse{{end}}</span>
     {{end}}{{end}}{{end}}
-    {{if .Alertes}}<span class="pill p-crit">{{len .Alertes}}</span>{{else}}<span class="pill p-ok">sain</span>{{end}}
-  </div>
+    {{if .Crit}}<span class="pill p-crit">{{.Crit}} critique{{if gt .Crit 1}}s{{end}}</span>
+    {{else if .Warn}}<span class="pill p-warn">{{.Warn}} à surveiller</span>
+    {{else}}<span class="pill p-ok">sain</span>{{end}}
+    <span class="chev" aria-hidden="true">▸</span>
+  </summary>
   <div class="card-b">
     {{if .Alertes}}
       {{range .Alertes}}
@@ -63,9 +67,12 @@
       Sonde <strong>locale</strong> sur <span class="mono">{{.URL}}</span> —
       {{if .Up}}code {{.Status}} en {{.LatencyMS}} ms{{else}}échec après {{.Attempts}} tentatives espacées{{end}}.
       {{if .CertExpiryRaw}}Certificat jusqu'au {{.CertExpiryRaw}}.{{end}}
-      <br>Ce site est filtré par IP, la console ne peut pas l'atteindre : c'est l'hôte qui se sonde.
-      <strong>La garantie est plus faible</strong> — on sait que l'application répond, pas qu'elle est
-      joignable depuis l'extérieur.
+      <br>Ce site est <strong>filtré par IP</strong> : la console n'y a pas droit, c'est donc l'hôte
+      qui se sonde. Un échec de la console ne signifierait pas une panne, seulement qu'elle n'est pas
+      dans la liste — d'où cette sonde locale.
+      <br>Ce qu'elle établit : <strong>l'application répond aux adresses autorisées</strong>. Ce
+      qu'elle n'établit pas : que le filtrage laisse bien passer les bonnes IP, ni que le réseau
+      entre elles et le serveur est intact.
     </p>
     {{end}}{{end}}{{end}}
 
@@ -77,7 +84,7 @@
     </p>
     {{end}}
   </div>
-</div>
+</details>
 {{else}}
 <p class="note">Aucun hôte supervisé.</p>
 {{end}}

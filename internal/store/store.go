@@ -65,6 +65,22 @@ CREATE TABLE IF NOT EXISTS host_meta (
     PRIMARY KEY (host, kind)
 );
 
+-- Historique d'état, une ligne par collecte.
+--
+-- Ne conserve QUE l'état agrégé et ce qui n'allait pas — pas le relevé
+-- complet, qui serait redondant à 96 collectes par jour. Quatorze jours
+-- tiennent en ~1300 lignes par hôte.
+CREATE TABLE IF NOT EXISTS health_history (
+    host    TEXT NOT NULL,
+    at      INTEGER NOT NULL,
+    state   TEXT NOT NULL,   -- ok | warn | crit | unknown
+    crit    INTEGER NOT NULL,
+    warn    INTEGER NOT NULL,
+    summary TEXT,
+    PRIMARY KEY (host, at)
+);
+CREATE INDEX IF NOT EXISTS idx_hh_host_at ON health_history(host, at DESC);
+
 -- Journal d'audit : toute action sensible, côté console.
 -- Le shim tient le sien de son côté ; un attaquant qui prend la console ne
 -- peut donc pas effacer la trace vue par l'hôte.
@@ -408,6 +424,16 @@ func (s *Store) PutMeta(host, kind, payload string) error {
 	return err
 }
 
+// DeleteMeta retire une donnée devenue caduque.
+//
+// Nécessaire : un résultat de sonde console qui survit après qu'on a basculé
+// l'hôte en sonde locale afficherait « site injoignable » à vie, alors que
+// c'est exactement ce que le changement visait à corriger.
+func (s *Store) DeleteMeta(host, kind string) error {
+	_, err := s.db.Exec(`DELETE FROM host_meta WHERE host = ? AND kind = ?`, host, kind)
+	return err
+}
+
 // GetMeta rend une donnée collectée et sa date de collecte.
 func (s *Store) GetMeta(host, kind string) (string, time.Time, error) {
 	var payload string
@@ -422,4 +448,76 @@ func (s *Store) GetMeta(host, kind string) (string, time.Time, error) {
 		return "", time.Time{}, err
 	}
 	return payload, time.Unix(at, 0), nil
+}
+
+
+// ─── Historique d'état ──────────────────────────────────────────────────
+
+// RecordHealth enregistre l'état agrégé d'un hôte à un instant.
+func (s *Store) RecordHealth(host string, at time.Time, state string, crit, warn int, summary string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO health_history (host, at, state, crit, warn, summary) VALUES (?,?,?,?,?,?)
+		ON CONFLICT(host, at) DO UPDATE SET state=excluded.state, crit=excluded.crit,
+		                                    warn=excluded.warn, summary=excluded.summary`,
+		host, at.Unix(), state, crit, warn, summary)
+	return err
+}
+
+// PurgeHealthHistory retire ce qui dépasse la fenêtre affichée.
+func (s *Store) PurgeHealthHistory(keep time.Duration) error {
+	_, err := s.db.Exec(`DELETE FROM health_history WHERE at < ?`,
+		time.Now().Add(-keep).Unix())
+	return err
+}
+
+// HourlyState est l'état d'un hôte sur une heure.
+type HourlyState struct {
+	Hour    time.Time
+	State   string
+	Crit    int
+	Warn    int
+	Summary string
+	Samples int
+}
+
+// HourlyHistory rend l'état heure par heure sur une fenêtre.
+//
+// Chaque heure porte le PIRE état observé : une panne de dix minutes ne doit
+// pas disparaître parce que les trois autres relevés de l'heure étaient bons.
+func (s *Store) HourlyHistory(host string, since time.Time) (map[int64]HourlyState, error) {
+	rows, err := s.db.Query(`
+		SELECT (at / 3600) * 3600 AS h,
+		       MAX(CASE state WHEN 'crit' THEN 3 WHEN 'warn' THEN 2 WHEN 'ok' THEN 1 ELSE 0 END) AS worst,
+		       MAX(crit), MAX(warn), COUNT(*),
+		       (SELECT summary FROM health_history i
+		         WHERE i.host = o.host AND (i.at/3600)*3600 = (o.at/3600)*3600
+		         ORDER BY CASE i.state WHEN 'crit' THEN 3 WHEN 'warn' THEN 2 ELSE 1 END DESC LIMIT 1)
+		FROM health_history o
+		WHERE host = ? AND at >= ?
+		GROUP BY h`, host, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]HourlyState{}
+	for rows.Next() {
+		var h int64
+		var worst, crit, warn, n int
+		var summary sql.NullString
+		if err := rows.Scan(&h, &worst, &crit, &warn, &n, &summary); err != nil {
+			return nil, err
+		}
+		st := "unknown"
+		switch worst {
+		case 3:
+			st = "crit"
+		case 2:
+			st = "warn"
+		case 1:
+			st = "ok"
+		}
+		out[h] = HourlyState{Hour: time.Unix(h, 0), State: st, Crit: crit,
+			Warn: warn, Summary: summary.String, Samples: n}
+	}
+	return out, rows.Err()
 }

@@ -74,6 +74,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /static/", http.StripPrefix("/", http.FileServerFS(staticFS)))
 	s.mux.HandleFunc("GET  /alerts", s.requireAuth(s.getAlerts))
 	s.mux.HandleFunc("GET  /sante", s.requireAuth(s.getSante))
+	s.mux.HandleFunc("GET  /historique", s.requireAuth(s.getHistorique))
 	// L'explorateur a rejoint la fiche d'hôte : tout ce qui concerne un
 	// serveur se lit au même endroit. La route est conservée pour ne pas
 	// casser un signet.
@@ -588,6 +589,19 @@ func (s *Server) getSante(w http.ResponseWriter, r *http.Request) {
 	d["Crit"] = crit
 	d["Warn"] = warn
 	s.render(w, "sante.html", d)
+}
+
+func (s *Server) getHistorique(w http.ResponseWriter, r *http.Request) {
+	rows, hours, days, err := s.col.Timeline(14)
+	if err != nil {
+		http.Error(w, "erreur interne", http.StatusInternalServerError)
+		return
+	}
+	d := s.page("historique", r, w)
+	d["Rows"] = rows
+	d["Hours"] = hours
+	d["Days"] = days
+	s.render(w, "historique.html", d)
 }
 
 func (s *Server) getAudit(w http.ResponseWriter, r *http.Request) {

@@ -116,6 +116,7 @@ func New(cfg *config.Config, fl *fleet.Client, st *store.Store, log *slog.Logger
 // Run boucle jusqu'à annulation du contexte.
 func (c *Collector) Run(ctx context.Context) {
 	c.CollectAll(ctx)
+	c.RecordHealthSnapshot()
 	t := time.NewTicker(c.cfg.Interval)
 	defer t.Stop()
 	for {
@@ -124,8 +125,24 @@ func (c *Collector) Run(ctx context.Context) {
 			return
 		case <-t.C:
 			c.CollectAll(ctx)
+			c.RecordHealthSnapshot()
 			_ = c.st.PurgeExpiredSessions()
+			_ = c.st.PurgeHealthHistory(15 * 24 * time.Hour)
 			c.fl.Reap()
+		}
+	}
+}
+
+// RecordHealthSnapshot fige l'état de chaque hôte, pour la frise historique.
+func (c *Collector) RecordHealthSnapshot() {
+	sante, err := c.SanteFleet()
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	for _, s := range sante {
+		if err := c.st.RecordHealth(s.Name, now, s.State(), s.Crit, s.Warn, s.Summary()); err != nil {
+			c.log.Warn("historique de santé non enregistré", "hôte", s.Name, "erreur", err)
 		}
 	}
 }
@@ -207,6 +224,11 @@ func (c *Collector) collectOne(ctx context.Context, h config.HostConfig) {
 	// et l'inverse est vrai aussi. Ce sont deux disponibilités distinctes.
 	if pr := c.probeHTTP(ctx, h); pr != nil {
 		c.saveMeta(h.Name, "probe", pr)
+	} else {
+		// Aucune sonde console configurée pour cet hôte — typiquement un site
+		// filtré par IP, sondé localement. Retirer un ancien résultat, sinon
+		// il continuerait d'afficher « injoignable » indéfiniment.
+		_ = c.st.DeleteMeta(h.Name, "probe")
 	}
 
 	{

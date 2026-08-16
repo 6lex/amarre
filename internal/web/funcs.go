@@ -54,6 +54,13 @@ func sparkSVG(vals []int64, w, h float64) template.HTML {
 }
 
 var funcs = template.FuncMap{
+	"add": func(a, b int) int { return a + b },
+	"pct": func(a, b int) string {
+		if b == 0 {
+			return "—"
+		}
+		return fmt.Sprintf("%.0f", float64(a)*100/float64(b))
+	},
 	// dict construit un contexte pour un sous-gabarit : le listing est rendu
 	// à la fois dans la page complète et comme fragment autonome, à partir du
 	// même code — sinon les deux divergent au premier changement.
