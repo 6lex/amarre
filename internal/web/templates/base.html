@@ -30,6 +30,15 @@ border:1px solid transparent;color:var(--ink-2);font-size:13.5px;text-decoration
 .navbtn:hover{background:var(--surface-2);color:var(--ink);text-decoration:none}
 .navbtn.on{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent-soft);font-weight:600}
 .navbtn .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--crit);font-weight:700}
+/* Pastille d'état : la couleur porte l'information, le chiffre la précise.
+   Vert sans chiffre = rien à signaler, ce qui doit être le cas normal et
+   ne mérite donc pas de nombre à lire. */
+.navbtn .dot{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;
+min-width:16px;height:16px;padding:0 4px;border-radius:9px;font-family:var(--mono);
+font-size:10.5px;font-weight:700;line-height:1}
+.d-ok{background:var(--ok);width:9px;min-width:9px;height:9px;padding:0}
+.d-warn{background:var(--warn-s);color:var(--warn);border:1px solid var(--warn)}
+.d-crit{background:var(--crit);color:#fff}
 .rail-foot{margin-top:auto;padding:0 7px;display:flex;flex-direction:column;gap:9px}
 .keybadge{display:flex;gap:8px;align-items:flex-start;padding:10px;border-radius:8px;
 background:var(--surface-2);border:1px solid var(--border)}
@@ -209,7 +218,10 @@ padding:9px 11px;font-size:12.5px;margin-top:14px}
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor"
          stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M1.6 8h3l1.6-4 2.4 8 1.6-4h4"/></svg>
-    Santé</a>
+    Santé
+    {{if .SanteCrit}}<span class="dot d-crit" title="{{.SanteCrit}} constat{{if gt .SanteCrit 1}}s{{end}} critique{{if gt .SanteCrit 1}}s{{end}}">{{.SanteCrit}}</span>
+    {{else if .SanteWarn}}<span class="dot d-warn" title="{{.SanteWarn}} point{{if gt .SanteWarn 1}}s{{end}} à surveiller">{{.SanteWarn}}</span>
+    {{else}}<span class="dot d-ok" title="Rien à signaler"></span>{{end}}</a>
 
   <a class="navbtn {{if eq .Page "alertes"}}on{{end}}" href="/alerts">
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor"

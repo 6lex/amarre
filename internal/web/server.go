@@ -449,9 +449,25 @@ func (s *Server) page(name string, r *http.Request, w http.ResponseWriter) map[s
 			alerts++
 		}
 	}
+	// État de santé agrégé, pour la pastille du rail. Lu depuis la base,
+	// donc négligeable : aucun hôte n'est interrogé.
+	sc, sw := 0, 0
+	if sante, err := s.col.SanteFleet(); err == nil {
+		for _, h := range sante {
+			for _, a := range h.Alertes {
+				if a.Niveau == "crit" {
+					sc++
+				} else {
+					sw++
+				}
+			}
+		}
+	}
+
 	return map[string]any{
 		"Page": name, "User": u, "CSRF": csrf,
 		"NHosts": len(hosts), "NAlerts": alerts,
+		"SanteCrit": sc, "SanteWarn": sw,
 	}
 }
 

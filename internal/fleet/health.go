@@ -45,6 +45,13 @@ type Health struct {
 	OS    string `json:"os"`
 	OSEOL string `json:"os_eol"`
 
+	// LocalProbe est la sonde effectuée PAR L'HÔTE, quand le site est filtré
+	// par IP et que la console ne peut pas l'atteindre. Garantie plus faible :
+	// elle prouve que l'application répond, pas qu'elle est joignable du
+	// dehors. L'interface doit le distinguer, sans quoi on croirait avoir
+	// vérifié quelque chose qu'on n'a pas vérifié.
+	LocalProbe *LocalProbe `json:"local_probe"`
+
 	BackupStatus BackupStatus            `json:"backup_status"`
 	Timers       map[string]TimerState   `json:"timers"`
 }
@@ -71,6 +78,17 @@ type BackupStatus struct {
 	DeepDur    int    `json:"deep_duration_s"`
 	DeepError  string `json:"deep_error"`
 	DeepSubset string `json:"deep_subset"`
+}
+
+type LocalProbe struct {
+	URL           string `json:"url"`
+	Up            bool   `json:"up"`
+	Status        int    `json:"status"`
+	Attempts      int    `json:"attempts"`
+	LatencyMS     int    `json:"latency_ms"`
+	Err           string `json:"err"`
+	CheckedAt     int64  `json:"checked_at"`
+	CertExpiryRaw string `json:"cert_expiry_raw"`
 }
 
 type TimerState struct {

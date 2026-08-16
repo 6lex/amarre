@@ -127,6 +127,15 @@ func (s *Sante) Evaluate(expect time.Duration) {
 	}
 
 	// ── Disponibilité du site ────────────────────────────────────────────
+	// Une sonde locale ne vaut pas une sonde externe, mais elle vaut mieux que
+	// rien quand le site est filtré par IP.
+	if h != nil && h.LocalProbe != nil && h.LocalProbe.URL != "" {
+		lp := h.LocalProbe
+		if !lp.Up {
+			add("crit", "Application sans réponse",
+				lp.URL+" — "+lp.Err+" (sondé depuis l'hôte, après "+itoa(lp.Attempts)+" tentatives)")
+		}
+	}
 	if p != nil {
 		if !p.Up {
 			add("crit", "Site indisponible",

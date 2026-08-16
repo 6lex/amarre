@@ -14,7 +14,11 @@
     <h2 class="mono" style="font-weight:500"><a href="/host/{{.Name}}" style="color:inherit">{{.Name}}</a></h2>
     <span class="sp"></span>
     {{if .Probe}}<span class="pill {{if .Probe.Up}}p-ok{{else}}p-crit{{end}}">
-      site {{if .Probe.Up}}en ligne{{else}}injoignable{{end}}</span>{{end}}
+      site {{if .Probe.Up}}en ligne{{else}}injoignable{{end}}</span>
+    {{else if and .Health .Health.LocalProbe}}{{with .Health.LocalProbe}}{{if .URL}}
+    <span class="pill {{if .Up}}p-ok{{else}}p-crit{{end}}" title="Sondé depuis l'hôte : prouve que l'application répond, pas qu'elle est joignable du dehors.">
+      application {{if .Up}}répond{{else}}sans réponse{{end}} · local</span>
+    {{end}}{{end}}{{end}}
     {{if .Alertes}}<span class="pill p-crit">{{len .Alertes}}</span>{{else}}<span class="pill p-ok">sain</span>{{end}}
   </div>
   <div class="card-b">
@@ -53,6 +57,17 @@
         <div class="v">{{.Updates.Total}}</div><div class="k">Maj · {{.Updates.Security}} sécu</div></div>{{end}}
     </div>
     {{end}}
+
+    {{if and .Health .Health.LocalProbe}}{{with .Health.LocalProbe}}{{if .URL}}
+    <p class="note" style="margin-top:11px">
+      Sonde <strong>locale</strong> sur <span class="mono">{{.URL}}</span> —
+      {{if .Up}}code {{.Status}} en {{.LatencyMS}} ms{{else}}échec après {{.Attempts}} tentatives espacées{{end}}.
+      {{if .CertExpiryRaw}}Certificat jusqu'au {{.CertExpiryRaw}}.{{end}}
+      <br>Ce site est filtré par IP, la console ne peut pas l'atteindre : c'est l'hôte qui se sonde.
+      <strong>La garantie est plus faible</strong> — on sait que l'application répond, pas qu'elle est
+      joignable depuis l'extérieur.
+    </p>
+    {{end}}{{end}}{{end}}
 
     {{with .Probe}}
     <p class="note" style="margin-top:11px">
