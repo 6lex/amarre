@@ -73,11 +73,16 @@ type BackupStatus struct {
 	CheckOK    bool   `json:"check_ok"`
 	CheckDur   int    `json:"check_duration_s"`
 	CheckError string `json:"check_error"`
+	// CheckKind dit CE QUI a échoué : « verrou », « absent », « corruption »…
+	// Confondre un dépôt verrouillé avec un dépôt corrompu affole pour rien,
+	// et crier au loup use la confiance dans les alertes qui comptent.
+	CheckKind  string `json:"check_kind"`
 	DeepAt     int64  `json:"deep_at"`
 	DeepOK     bool   `json:"deep_ok"`
 	DeepDur    int    `json:"deep_duration_s"`
 	DeepError  string `json:"deep_error"`
 	DeepSubset string `json:"deep_subset"`
+	DeepKind   string `json:"deep_kind"`
 }
 
 type LocalProbe struct {

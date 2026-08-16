@@ -51,11 +51,32 @@ func (s *Sante) Evaluate(expect time.Duration) {
 		bs := h.BackupStatus
 		// Une sauvegarde dont l'intégrité n'est pas vérifiée est une
 		// sauvegarde dont on ignore l'état.
+		// Le libellé suit la CAUSE. Un dépôt verrouillé n'est pas un dépôt
+		// abîmé : l'annoncer comme une corruption déclencherait une panique
+		// inutile, et à force la prochaine vraie alerte ne serait plus crue.
 		if bs.CheckAt > 0 && !bs.CheckOK {
-			add("crit", "Intégrité structurelle en échec", bs.CheckError)
+			switch bs.CheckKind {
+			case "verrou":
+				add("warn", "Vérification impossible : dépôt verrouillé",
+					"Un verrou orphelin bloque le contrôle. Le bouton « Déverrouiller » le retire ; rien n'indique une corruption.")
+			case "absent":
+				add("crit", "Dépôt introuvable au moment du contrôle", bs.CheckError)
+			default:
+				add("crit", "Intégrité structurelle en échec", bs.CheckError)
+			}
 		}
 		if bs.DeepAt > 0 && !bs.DeepOK {
-			add("crit", "Corruption détectée à la relecture", bs.DeepError)
+			switch bs.DeepKind {
+			case "verrou":
+				add("warn", "Relecture impossible : dépôt verrouillé",
+					"La vérification approfondie n'a pas pu démarrer. Ce n'est pas un signe de corruption.")
+			case "absent":
+				add("crit", "Dépôt introuvable à la relecture", bs.DeepError)
+			case "motdepasse":
+				add("crit", "Mot de passe de dépôt refusé", "Le dépôt existe mais ne s'ouvre pas.")
+			default:
+				add("crit", "Corruption détectée à la relecture", bs.DeepError)
+			}
 		}
 		if bs.CheckAt == 0 {
 			add("warn", "Intégrité jamais vérifiée",
