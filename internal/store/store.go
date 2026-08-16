@@ -50,6 +50,21 @@ CREATE TABLE IF NOT EXISTS checks (
 );
 CREATE INDEX IF NOT EXISTS idx_checks_host_time ON checks(host, collected_at DESC);
 
+-- Métadonnées collectées par hôte : ce que l'interface affiche sans jamais
+-- interroger le serveur elle-même.
+--
+-- Y sont persistés la liste des snapshots, les statistiques du dépôt, la
+-- policy et les exclusions. PAS l'arborescence complète : une base contenant
+-- tous les chemins de tous les serveurs serait une divulgation sérieuse, même
+-- sans détenir de clé de dépôt. Elle reste en mémoire.
+CREATE TABLE IF NOT EXISTS host_meta (
+    host       TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    payload    TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (host, kind)
+);
+
 -- Journal d'audit : toute action sensible, côté console.
 -- Le shim tient le sien de son côté ; un attaquant qui prend la console ne
 -- peut donc pas effacer la trace vue par l'hôte.
@@ -375,4 +390,36 @@ func (s *Store) History(host string, n int) ([]Check, error) {
 		out[i], out[j] = out[j], out[i]
 	}
 	return out, rows.Err()
+}
+
+
+// ─── Métadonnées d'hôte ─────────────────────────────────────────────────
+
+// ErrNoMeta signale qu'un hôte n'a pas encore été collecté.
+var ErrNoMeta = errors.New("aucune métadonnée collectée pour cet hôte")
+
+// PutMeta enregistre une donnée collectée pour un hôte.
+func (s *Store) PutMeta(host, kind, payload string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO host_meta (host, kind, payload, fetched_at) VALUES (?,?,?,?)
+		ON CONFLICT(host, kind) DO UPDATE SET payload = excluded.payload,
+		                                      fetched_at = excluded.fetched_at`,
+		host, kind, payload, time.Now().Unix())
+	return err
+}
+
+// GetMeta rend une donnée collectée et sa date de collecte.
+func (s *Store) GetMeta(host, kind string) (string, time.Time, error) {
+	var payload string
+	var at int64
+	err := s.db.QueryRow(
+		`SELECT payload, fetched_at FROM host_meta WHERE host = ? AND kind = ?`,
+		host, kind).Scan(&payload, &at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", time.Time{}, ErrNoMeta
+	}
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return payload, time.Unix(at, 0), nil
 }

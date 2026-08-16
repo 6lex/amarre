@@ -63,4 +63,12 @@
 
   history.replaceState({ u: location.pathname + location.search }, '');
   bind();
+
+  // L'arborescence est chargée APRÈS la page : elle coûte plusieurs secondes
+  // et n'a pas à retarder l'affichage du reste de la fiche.
+  var initial = wrap.getAttribute('data-initial');
+  if (initial) {
+    wrap.removeAttribute('data-initial');
+    load(initial, false);
+  }
 })();

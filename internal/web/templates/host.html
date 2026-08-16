@@ -9,6 +9,10 @@
   <span class="sp"></span>
   <span class="muted mono">{{.Host.User}}@{{.Host.Addr}}:{{.Host.Port}}</span>
   <form method="post" action="/host/{{.Host.Name}}/action" style="display:inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="verb" value="refresh">
+    <button class="btn" type="submit" title="Force une collecte immédiate au lieu d'attendre le prochain cycle.">Rafraîchir</button>
+  </form>
+  <form method="post" action="/host/{{.Host.Name}}/action" style="display:inline">
     <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="verb" value="unlock">
     <button class="btn" type="submit" title="Retire les verrous périmés. Un verrou vivant n'est jamais touché.">Déverrouiller</button>
   </form>
@@ -21,7 +25,11 @@
     <button class="btn" type="submit" style="background:var(--accent);border-color:var(--accent);color:#fff">Sauvegarder</button>
   </form>
 </header>
-<p class="note" style="margin:-8px 0 14px">Ces opérations sont asynchrones — une vérification peut
+<p class="note" style="margin:-8px 0 14px">
+{{if not .MetaAt.IsZero}}<strong>Données collectées {{stamp .MetaAt}}</strong> ({{age (since .MetaAt)}}) —
+la fiche lit l'état relevé par le collecteur, elle n'interroge jamais le serveur au moment de
+l'affichage. « Rafraîchir » force une collecte immédiate.<br>{{end}}
+Ces opérations sont asynchrones — une vérification peut
 durer plusieurs minutes. Le résultat arrive dans le <a href="/audit">journal</a>. Si la policy de
 l'hôte refuse, c'est le refus qui y est consigné.</p>
 
@@ -115,8 +123,11 @@ l'hôte refuse, c'est le refus qui y est consigné.</p>
           <button class="btn" type="submit" style="padding:5px 10px;font-size:12px">Voir</button>
         </form>
       </div>
-      <div id="tree">
-        {{template "tree.html" (dict "Host" .Host.Name "Snap" $.Snap "Path" $.Path "Crumbs" $.Crumbs "Nodes" $.Nodes "BrowseErr" $.BrowseErr)}}
+      <div id="tree" data-initial="/host/{{.Host.Name}}?snap={{$.Snap}}&amp;path={{$.Path}}">
+        <div class="card-b" style="padding:14px 15px">
+          <a data-nav href="/host/{{.Host.Name}}?snap={{$.Snap}}&amp;path={{$.Path}}">Afficher l'arborescence</a>
+          <span class="muted"> — quelques secondes, le temps d'ouvrir le dépôt</span>
+        </div>
       </div>
       <div class="card-b">
         <p class="note" style="margin:0">Chaque niveau est demandé à l'hôte au moment de l'affichage —

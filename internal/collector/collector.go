@@ -7,6 +7,7 @@ package collector
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -178,6 +179,21 @@ func (c *Collector) collectOne(ctx context.Context, h config.HostConfig) {
 			if chk.SizeBytes == 0 && rs.SourceSize > 0 {
 				chk.SizeBytes = rs.SourceSize
 			}
+			c.saveMeta(h.Name, "stats", rs)
+		}
+
+		// Le reste est collecté ICI, une fois par cycle, et non au moment où
+		// quelqu'un ouvre la fiche. Les snapshots ne changent qu'après une
+		// sauvegarde : les redemander à chaque affichage faisait payer 2,5 s
+		// pour une donnée qui n'a pas bougé depuis la nuit précédente.
+		if snaps, serr := c.fl.Snapshots(ctx, h.Addr, h.User, h.Port); serr == nil {
+			c.saveMeta(h.Name, "snapshots", snaps)
+		}
+		if pol, serr := c.fl.Policy(ctx, h.Addr, h.User, h.Port); serr == nil {
+			c.saveMeta(h.Name, "policy", pol)
+		}
+		if exc, serr := c.fl.Excludes(ctx, h.Addr, h.User, h.Port); serr == nil {
+			c.saveMeta(h.Name, "excludes", exc)
 		}
 	}
 	c.cache.invalidate(h.Name)
@@ -291,8 +307,18 @@ type Detail struct {
 	Excludes  []string
 	History   []store.Check
 	Err       string
+
+	// MetaAt date la collecte dont proviennent ces données. Affichée, pour
+	// qu'on ne prenne jamais un état vieux de quinze minutes pour du direct.
+	MetaAt time.Time
 }
 
+// HostDetail compose la fiche d'un hôte À PARTIR DE LA BASE, sans jamais
+// interroger le serveur.
+//
+// C'est le point : la latence d'affichage ne doit pas dépendre d'un aller-retour
+// SSH et d'une ouverture de dépôt SFTP. Les données viennent de la dernière
+// collecte ; leur fraîcheur est affichée pour que l'opérateur sache ce qu'il lit.
 func (c *Collector) HostDetail(ctx context.Context, name string) (*Detail, error) {
 	var hc *config.HostConfig
 	for i := range c.cfg.Hosts {
@@ -302,7 +328,7 @@ func (c *Collector) HostDetail(ctx context.Context, name string) (*Detail, error
 		}
 	}
 	if hc == nil {
-		return nil, fmt.Errorf("hôte inconnu : %s", name)
+		return nil, errUnknownHost(name)
 	}
 	d := &Detail{Host: *hc}
 
@@ -315,37 +341,39 @@ func (c *Collector) HostDetail(ctx context.Context, name string) (*Detail, error
 	}
 	d.History, _ = c.st.History(name, 30)
 
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
-	defer cancel()
-
-	// Les trois appels sont indépendants et coûtent ~2,5 s chacun parce que
-	// restic rouvre le dépôt distant à chaque fois. En série la fiche mettait
-	// 5 s à s'afficher ; en parallèle elle coûte le plus lent des trois.
-	var wg sync.WaitGroup
-	var snapErr error
-	wg.Add(4)
-	go func() {
-		defer wg.Done()
-		d.Snapshots, snapErr = c.snapshotsCached(ctx, *hc)
-	}()
-	go func() {
-		defer wg.Done()
-		d.Stats, _ = c.statsCached(ctx, *hc)
-	}()
-	go func() {
-		defer wg.Done()
-		d.Policy, _ = c.policyCached(ctx, *hc)
-	}()
-	go func() {
-		defer wg.Done()
-		d.Excludes, _ = c.excludesCached(ctx, *hc)
-	}()
-	wg.Wait()
-
-	if snapErr != nil {
-		d.Err = snapErr.Error()
+	if err := c.loadMeta(name, "snapshots", &d.Snapshots); err != nil {
+		d.Err = "aucune collecte encore aboutie pour cet hôte"
+	}
+	var rs fleet.RepoStats
+	if err := c.loadMeta(name, "stats", &rs); err == nil {
+		d.Stats = &rs
+	}
+	_ = c.loadMeta(name, "policy", &d.Policy)
+	_ = c.loadMeta(name, "excludes", &d.Excludes)
+	if _, at, err := c.st.GetMeta(name, "snapshots"); err == nil {
+		d.MetaAt = at
 	}
 	return d, nil
+}
+
+// saveMeta sérialise et enregistre une donnée collectée.
+func (c *Collector) saveMeta(host, kind string, v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return
+	}
+	if err := c.st.PutMeta(host, kind, string(b)); err != nil {
+		c.log.Warn("enregistrement des métadonnées impossible", "hôte", host, "type", kind, "erreur", err)
+	}
+}
+
+// loadMeta relit une donnée collectée.
+func (c *Collector) loadMeta(host, kind string, out any) error {
+	payload, _, err := c.st.GetMeta(host, kind)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal([]byte(payload), out)
 }
 
 func (c *Collector) snapshotsCached(ctx context.Context, h config.HostConfig) ([]fleet.Snapshot, error) {
@@ -480,7 +508,7 @@ func (c *Collector) Action(host, verb, actor, ip string) error {
 		return fmt.Errorf("hôte inconnu : %s", host)
 	}
 	switch verb {
-	case "check", "backup", "unlock":
+	case "check", "backup", "unlock", "refresh":
 	default:
 		return fmt.Errorf("opération non proposée : %s", verb)
 	}
@@ -511,6 +539,13 @@ func (c *Collector) Action(host, verb, actor, ip string) error {
 			err = c.fl.Backup(ctx, h.Addr, h.User, h.Port)
 		case "unlock":
 			err = c.fl.Unlock(ctx, h.Addr, h.User, h.Port)
+		case "refresh":
+			// Recollecte immédiate : la fiche lit la base, qui n'est
+			// rafraîchie que toutes les 15 minutes. Ce bouton évite d'attendre
+			// le prochain cycle après une sauvegarde manuelle.
+			c.cache.invalidate(h.Name)
+			c.InvalidateTrees(h.Name)
+			c.collectOne(ctx, h)
 		}
 		if err != nil {
 			c.log.Warn("opération en échec", "hôte", h.Name, "verbe", verb, "erreur", err)

@@ -354,7 +354,15 @@ func (s *Server) getHost(w http.ResponseWriter, r *http.Request) {
 	// avec son IP source. Un attaquant qui prendrait la console ne peut pas
 	// l'effacer, ce qui en fait une preuve plus solide que la nôtre.
 
-	// Navigation d'arborescence, désormais intégrée à la fiche.
+	// L'arborescence n'est PAS récupérée ici.
+	//
+	// Elle coûte un appel distant de 2,5 s — 8 s sur un gros Moodle — et
+	// bloquait l'affichage de toute la fiche pour une donnée que l'opérateur
+	// ne consulte pas systématiquement. Le bloc est rendu vide avec l'adresse
+	// du fragment, et le navigateur va le chercher après coup.
+	//
+	// Sans JavaScript, le bloc affiche un lien : la page reste utilisable,
+	// simplement l'arborescence demande un clic.
 	snap := r.URL.Query().Get("snap")
 	if snap == "" && len(det.Snapshots) > 0 {
 		snap = det.Snapshots[0].ID
@@ -363,19 +371,10 @@ func (s *Server) getHost(w http.ResponseWriter, r *http.Request) {
 	if path == "" {
 		path = "/"
 	}
-	if snap != "" {
-		nodes, _, berr := s.col.Browse(r.Context(), name, snap, path)
-		if berr != nil {
-			d["BrowseErr"] = berr.Error()
-			nodes = []fleet.Node{}
-		}
-		d["Nodes"] = nodes
-	} else {
-		d["Nodes"] = []fleet.Node{}
-	}
 	d["Snap"] = snap
 	d["Path"] = path
 	d["Crumbs"] = crumbs(path)
+	d["TreeDeferred"] = true
 
 	for _, e := range det.Policy {
 		switch e.Key {
