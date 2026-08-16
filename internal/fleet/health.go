@@ -42,6 +42,11 @@ type Health struct {
 	} `json:"updates"`
 	LastUnattended int64 `json:"last_unattended"`
 
+	// LastUpgrade est la dernière mise à jour RÉELLEMENT appliquée, lue dans
+	// le journal d'apt. La date du dernier « apt update » ne prouverait rien :
+	// on peut rafraîchir un index tous les jours sans jamais rien installer.
+	LastUpgrade LastUpgrade `json:"last_upgrade"`
+
 	OS    string `json:"os"`
 	OSEOL string `json:"os_eol"`
 
@@ -55,6 +60,23 @@ type Health struct {
 	BackupStatus BackupStatus            `json:"backup_status"`
 	Timers       map[string]TimerState   `json:"timers"`
 }
+
+type LastUpgrade struct {
+	At       int64    `json:"at"`
+	Count    int      `json:"count"`
+	Auto     bool     `json:"auto"`
+	Packages []string `json:"packages"`
+}
+
+// Age rend le temps écoulé depuis la dernière mise à jour appliquée.
+func (u LastUpgrade) Age() time.Duration {
+	if u.At == 0 {
+		return 0
+	}
+	return time.Since(time.Unix(u.At, 0))
+}
+
+func (u LastUpgrade) Time() time.Time { return time.Unix(u.At, 0) }
 
 type Filesystem struct {
 	Mount string `json:"mount"`

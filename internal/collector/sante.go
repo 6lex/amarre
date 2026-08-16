@@ -134,9 +134,30 @@ func (s *Sante) Evaluate(expect time.Duration) {
 			add("warn", "Redémarrage requis",
 				"Le système tourne sur du code qui n'est plus celui installé : "+join(h.RebootPackages))
 		}
-		if h.Updates.Security > 0 {
+		// Le signal n'est pas la date seule, ni le nombre de correctifs seul,
+		// mais leur ÉCART : des paquets de sécurité qui s'accumulent alors que
+		// plus rien n'a été appliqué depuis des semaines, c'est
+		// unattended-upgrades cassé — et personne ne s'en aperçoit, puisque
+		// aucune erreur n'est émise.
+		lu := h.LastUpgrade
+		stale := lu.At == 0 || lu.Age() > 30*24*time.Hour
+		switch {
+		case h.Updates.Security > 0 && stale:
+			since := "jamais"
+			if lu.At > 0 {
+				since = "il y a " + itoa(int(lu.Age().Hours()/24)) + " jours"
+			}
+			add("crit", "Correctifs de sécurité non appliqués",
+				itoa(h.Updates.Security)+" en attente, et plus rien d'installé "+since+
+					" — les mises à jour automatiques ne passent plus.")
+		case h.Updates.Security > 0:
 			add("warn", "Correctifs de sécurité en attente",
-				itoa(h.Updates.Security)+" paquets.")
+				itoa(h.Updates.Security)+" paquets. La dernière mise à jour date d'il y a "+
+					itoa(int(lu.Age().Hours()/24))+" jours.")
+		case stale && lu.At > 0:
+			add("warn", "Aucune mise à jour depuis longtemps",
+				"Dernière installation il y a "+itoa(int(lu.Age().Hours()/24))+
+					" jours. Vérifier que unattended-upgrades tourne encore.")
 		}
 		if eol, ok := h.EOLDate(); ok {
 			d := time.Until(eol)

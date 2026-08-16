@@ -58,7 +58,14 @@
           <div class="k">Relecture {{.DeepSubset}}</div></div>{{end}}
       {{end}}
       {{if .Updates.Total}}<div class="m {{if .Updates.Security}}warn{{end}}">
-        <div class="v">{{.Updates.Total}}</div><div class="k">Maj · {{.Updates.Security}} sécu</div></div>{{end}}
+        <div class="v">{{.Updates.Total}}</div><div class="k">En attente · {{.Updates.Security}} sécu</div></div>{{end}}
+      {{with .LastUpgrade}}{{if .At}}
+      <div class="m" title="{{.Count}} paquets, {{if .Auto}}automatique{{else}}manuelle{{end}}{{if .Packages}} — {{join .Packages}}{{end}}">
+        <div class="v">{{age .Age}}</div>
+        <div class="k">Dernier upgrade · {{.Count}} pq {{if .Auto}}auto{{else}}manuel{{end}}</div></div>
+      {{else}}
+      <div class="m warn"><div class="v">—</div><div class="k">Aucun upgrade tracé</div></div>
+      {{end}}{{end}}
     </div>
     {{end}}
 
