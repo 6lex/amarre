@@ -314,8 +314,19 @@ func (s *Server) getFleet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "erreur interne", http.StatusInternalServerError)
 		return
 	}
+	// La vue de parc porte l'état RÉEL, pas seulement la fraîcheur du
+	// snapshot. Un hôte dont le timer est désactivé ou dont l'intégrité n'est
+	// plus vérifiée restait vert ici alors que Santé le disait critique : deux
+	// pages qui se contredisent, et c'est la première ouverte qui rassure à tort.
+	sante := map[string]collector.Sante{}
+	if list, err := s.col.SanteFleet(); err == nil {
+		for _, h := range list {
+			sante[h.Name] = h
+		}
+	}
 	d := s.page("parc", r, w)
 	d["Hosts"] = hosts
+	d["Sante"] = sante
 	d["Totals"] = collector.Sum(hosts)
 	d["Now"] = time.Now()
 	spark := map[string][]int64{}

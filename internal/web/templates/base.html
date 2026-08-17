@@ -234,8 +234,9 @@ tbody tr.link:hover td{background:var(--surface-2)}
 td.host{font-family:var(--mono);font-size:12.5px;position:relative;padding-left:19px;
 white-space:normal;min-width:220px}
 td.host::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ok)}
-tr.s-overdue td.host::before,tr.s-nobackup td.host::before{background:var(--crit)}
-tr.s-unknown td.host::before{background:var(--warn)}
+tr.s-crit td.host::before{background:var(--crit)}
+tr.s-warn td.host::before{background:var(--warn)}
+tr.s-ok td.host::before{background:var(--ok)}
 td.n{font-variant-numeric:tabular-nums;font-family:var(--mono);text-align:right}
 /* Le détail d'erreur vit sous le nom d'hôte, tronqué, jamais dans une colonne
    de données : un message SSH complet déborde de n'importe quelle largeur. */

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/6lex/amarre/internal/collector"
 	"github.com/6lex/amarre/internal/store"
 )
 
@@ -54,6 +55,9 @@ func sparkSVG(vals []int64, w, h float64) template.HTML {
 }
 
 var funcs = template.FuncMap{
+	"combined": func(v collector.HostView, s collector.Sante) string {
+		return collector.Combined(v, s, s.Name != "")
+	},
 	"add": func(a, b int) int { return a + b },
 	"pct": func(a, b int) string {
 		if b == 0 {

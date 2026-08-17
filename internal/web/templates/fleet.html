@@ -6,7 +6,7 @@
   <div class="tile"><div class="v num">{{bytes .Totals.Protected}}</div><div class="k label">Données protégées</div></div>
   <div class="tile"><div class="v num">{{bytes .Totals.RepoSize}}</div><div class="k label">Dépôts après dédup</div></div>
   <div class="tile"><div class="v num">{{ratio .Totals.Ratio}}</div><div class="k label">Taux de réduction</div></div>
-  <div class="tile {{if .Totals.Alerts}}alarm{{end}}"><div class="v num">{{.Totals.Alerts}}<small>/{{.Totals.Hosts}}</small></div><div class="k label">Hôtes en défaut</div></div>
+  <div class="tile {{if .SanteCrit}}alarm{{end}}"><div class="v num">{{.SanteCrit}}<small>/{{.SanteWarn}}</small></div><div class="k label">Constats critiques / à surveiller</div></div>
 </div>
 
 {{if .Totals.Alerts}}
@@ -24,21 +24,24 @@
   <div class="card-h"><h2>Hôtes</h2><span class="sp"></span>
     <span class="muted">collecte : {{stamp .Now}}</span></div>
   <div class="tw"><table>
-    <thead><tr><th>Hôte</th><th>État</th><th>Dernier snapshot</th><th>Âge</th>
+    <thead><tr><th>Hôte</th><th>Sauvegarde</th><th>Santé</th><th>Dernier snapshot</th><th>Âge</th>
       <th style="text-align:right">Source</th><th style="text-align:right">Dépôt</th>
-      <th>ID</th><th>Tendance</th></tr></thead>
+      <th>Tendance</th></tr></thead>
     <tbody>
     {{range .Hosts}}
-      <tr class="s-{{.State}}">
+      {{$s := index $.Sante .Name}}
+      <tr class="s-{{combined . $s}}">
         <td class="host"><a href="/host/{{.Name}}" style="color:inherit">{{.Name}}</a>
           {{if .Err}}<span class="sub" title="{{.Err}}">{{short 70 .Err}}</span>{{end}}</td>
         <td><span class="pill {{if eq (printf "%s" .State) "ok"}}p-ok{{else if eq (printf "%s" .State) "unknown"}}p-warn{{else}}p-crit{{end}}">
           {{stateLabel (printf "%s" .State)}}</span></td>
+        <td>{{if $s.Crit}}<a href="/sante" class="pill p-crit" style="text-decoration:none">{{$s.Crit}} critique{{if gt $s.Crit 1}}s{{end}}</a>
+          {{else if $s.Warn}}<a href="/sante" class="pill p-warn" style="text-decoration:none">{{$s.Warn}} à surveiller</a>
+          {{else}}<span class="pill p-ok">sain</span>{{end}}</td>
         <td class="num">{{stamp .SnapshotAt}}</td>
         <td class="n">{{age .Age}}</td>
         <td class="n">{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}—{{end}}</td>
         <td class="n">{{if .RepoSize}}{{bytes .RepoSize}}{{else}}—{{end}}</td>
-        <td class="mono muted">{{if .SnapshotID}}{{.SnapshotID}}{{else}}—{{end}}</td>
         <td>{{sparkline (index $.Spark .Name)}}</td>
       </tr>
     {{else}}
@@ -47,7 +50,9 @@
     </tbody>
   </table></div>
 </div>
-<p class="note">Le liseré gauche encode l'état, la pastille le nomme : un défaut se repère sans lire.
+<p class="note">Le liseré gauche porte l'état <strong>combiné</strong> — sauvegarde et santé. Un hôte
+dont le snapshot est frais mais dont la planification est arrêtée n'est pas vert : deux pages qui se
+contredisent laisseraient croire que tout va bien à qui ne les ouvre pas toutes les deux.
 Cliquer le nom d'un hôte ouvre sa fiche — snapshots, policy locale et occupation du dépôt sont
 alors demandés à la volée, jamais conservés ici.</p>
 </div></main></div></body></html>

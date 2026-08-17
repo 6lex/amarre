@@ -334,3 +334,26 @@ func (s *Sante) Summary() string {
 	}
 	return strings.Join(parts, " · ")
 }
+
+
+// Combined rend l'état d'un hôte en tenant compte de TOUT : la fraîcheur de la
+// sauvegarde et les constats de santé. C'est cet état qui doit colorer la vue
+// de parc, sinon elle affirme « à jour » d'un hôte dont la planification est
+// arrêtée.
+func Combined(v HostView, s Sante, known bool) string {
+	switch v.State {
+	case StateOverdue, StateNoBackup, StateUnknown:
+		return "crit"
+	}
+	if !known {
+		return "ok"
+	}
+	switch {
+	case s.Crit > 0:
+		return "crit"
+	case s.Warn > 0:
+		return "warn"
+	default:
+		return "ok"
+	}
+}
