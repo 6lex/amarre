@@ -21,6 +21,48 @@
 {{end}}
 
 <div class="card">
+  <div class="card-h"><h2>Bilan sur {{.BarDays}} jours</h2><span class="sp"></span>
+    <span class="legend">
+      <span class="lg"><i class="c c-ok"></i>sain</span>
+      <span class="lg"><i class="c c-warn"></i>à surveiller</span>
+      <span class="lg"><i class="c c-crit"></i>critique</span>
+    </span>
+  </div>
+  <div class="card-b">
+    {{range .Bars}}
+    <div class="bar-row">
+      <a class="bar-name mono" href="/host/{{.Host}}" title="{{.Host}}">{{.Host}}</a>
+      {{if .Measured}}
+      <div class="bar" role="img"
+        aria-label="{{.PctOK}} % sain, {{.PctWarn}} % à surveiller, {{.PctCrit}} % critique">
+        {{if .PctOK}}<span class="seg s-ok" style="flex:{{.PctOK}}"
+          title="Sain — {{.PctOK}} % ({{age .DurOK}})">{{if ge .PctOK 12}}{{.PctOK}} %{{end}}</span>{{end}}
+        {{if .PctWarn}}<span class="seg s-warn" style="flex:{{.PctWarn}}"
+          title="À surveiller — {{.PctWarn}} % ({{age .DurWarn}})">{{if ge .PctWarn 12}}{{.PctWarn}} %{{end}}</span>{{end}}
+        {{if .PctCrit}}<span class="seg s-crit" style="flex:{{.PctCrit}}"
+          title="Critique — {{.PctCrit}} % ({{age .DurCrit}})">{{if ge .PctCrit 12}}{{.PctCrit}} %{{end}}</span>{{end}}
+      </div>
+      <div class="bar-num">
+        <span class="bn n-ok">{{.PctOK}} %</span>
+        <span class="bn n-warn">{{.PctWarn}} %</span>
+        <span class="bn n-crit">{{.PctCrit}} %</span>
+      </div>
+      <div class="bar-cov muted" title="Part des heures réellement mesurées sur les {{$.BarDays}} jours.">
+        couverture {{.Coverage}} %</div>
+      {{else}}
+      <div class="bar bar-empty">aucune mesure sur la période</div>
+      <div class="bar-num"></div><div class="bar-cov muted">couverture 0 %</div>
+      {{end}}
+    </div>
+    {{end}}
+    <p class="note">Les pourcentages portent sur les heures <strong>réellement mesurées</strong>, pas
+    sur les quatorze jours entiers. Compter les trous au dénominateur donnerait « 2 % de sain » à un
+    hôte parfaitement sain mais raccordé la veille — exact et complètement trompeur. La
+    <strong>couverture</strong> dit donc à part quelle proportion de la période a été observée.</p>
+  </div>
+</div>
+
+<div class="card">
   <div class="card-h"><h2>Épisodes</h2><span class="sp"></span>
     <span class="muted">quand · combien de temps · pourquoi</span></div>
   {{if .Episodes}}

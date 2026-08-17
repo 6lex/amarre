@@ -72,6 +72,25 @@ type Axis struct {
 	Label string
 }
 
+// Bar est la répartition du temps d'un hôte entre les trois états, sur une
+// période fixe de quatorze jours.
+//
+// Les pourcentages portent sur les intervalles RÉELLEMENT MESURÉS, pas sur la
+// période entière. Compter les trous dans le dénominateur donnerait « 2 % de
+// sain » à un hôte parfaitement sain mais raccordé la veille — un chiffre
+// techniquement exact et complètement trompeur. La couverture est donc dite
+// à part.
+type Bar struct {
+	Host                   string
+	PctOK, PctWarn, PctCrit int
+	Measured               int
+	Total                  int
+	Coverage               int
+	// Durées, parce qu'un pourcentage sans échelle ne dit pas s'il s'agit de
+	// dix minutes ou de trois jours.
+	DurOK, DurWarn, DurCrit time.Duration
+}
+
 type TimelineData struct {
 	Window   Window
 	Rows     []Row
@@ -83,6 +102,12 @@ type TimelineData struct {
 	Depuis    time.Time
 	Mesures   int
 	Tronquee  bool // la fenêtre demandée dépasse l'historique disponible
+
+	// Bars couvre toujours quatorze jours, indépendamment de la fenêtre
+	// choisie pour la frise : c'est un bilan, il doit rester comparable
+	// d'une visite à l'autre.
+	Bars    []Bar
+	BarDays int
 }
 
 // Timeline compose la page d'historique.
@@ -166,6 +191,9 @@ func (c *Collector) Timeline(key string) (*TimelineData, error) {
 		td.Episodes = append(td.Episodes, episodes(hc.Name, pts)...)
 	}
 
+	td.BarDays = 14
+	td.Bars = c.bars(td.BarDays)
+
 	// Le plus récent en premier : on cherche presque toujours ce qui vient
 	// de se passer, pas ce qui s'est passé il y a douze jours.
 	sort.Slice(td.Episodes, func(i, j int) bool {
@@ -220,5 +248,69 @@ func episodes(host string, pts []store.HealthPoint) []Episode {
 		cur.Ongoing = true
 		out = append(out, *cur)
 	}
+	return out
+}
+
+
+// bars calcule la répartition du temps par état sur les derniers jours.
+func (c *Collector) bars(days int) []Bar {
+	const step = time.Hour // granularité du bilan
+	end := time.Now().Truncate(step).Add(step)
+	start := end.Add(-time.Duration(days) * 24 * time.Hour)
+	total := int(end.Sub(start) / step)
+	rank := map[string]int{"unknown": 0, "ok": 1, "warn": 2, "crit": 3}
+
+	var out []Bar
+	for _, hc := range c.cfg.Hosts {
+		if hc.Disabled {
+			continue
+		}
+		pts, err := c.st.HealthSeries(hc.Name, start)
+		if err != nil {
+			continue
+		}
+		// Une heure prend le pire état qu'on y a observé — cohérent avec la
+		// frise, et conservateur : on ne minimise jamais un incident.
+		slots := make([]string, total)
+		for _, p := range pts {
+			i := int(p.At.Sub(start) / step)
+			if i < 0 || i >= total {
+				continue
+			}
+			if rank[p.State] > rank[slots[i]] {
+				slots[i] = p.State
+			}
+		}
+		b := Bar{Host: hc.Name, Total: total}
+		for _, s := range slots {
+			switch s {
+			case "ok":
+				b.DurOK += step
+			case "warn":
+				b.DurWarn += step
+			case "crit":
+				b.DurCrit += step
+			}
+		}
+		b.Measured = int((b.DurOK + b.DurWarn + b.DurCrit) / step)
+		if b.Measured > 0 {
+			// Arrondis cohérents : les deux plus petits d'abord, le sain
+			// absorbe le reste, pour que la somme fasse toujours 100.
+			b.PctCrit = int(float64(b.DurCrit) / float64(b.DurOK+b.DurWarn+b.DurCrit) * 100)
+			b.PctWarn = int(float64(b.DurWarn) / float64(b.DurOK+b.DurWarn+b.DurCrit) * 100)
+			b.PctOK = 100 - b.PctCrit - b.PctWarn
+		}
+		if total > 0 {
+			b.Coverage = b.Measured * 100 / total
+		}
+		out = append(out, b)
+	}
+	// Le moins sain en premier.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].PctCrit != out[j].PctCrit {
+			return out[i].PctCrit > out[j].PctCrit
+		}
+		return out[i].PctWarn > out[j].PctWarn
+	})
 	return out
 }
